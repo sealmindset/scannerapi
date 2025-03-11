@@ -1,0 +1,76 @@
+{
+  "scan_id": "20250310144730",
+  "target": "http://localhost:5000",
+  "start_time": "2025-03-10T14:47:17.541804",
+  "end_time": "2025-03-10T14:47:30.352105",
+  "duration": 12.810302019119263,
+  "scanners": [
+    {
+      "name": "unauthorized_password_change",
+      "success": true,
+      "duration": 0.010218143463134766,
+      "findings": [],
+      "start_time": "2025-03-10T14:47:17.577914",
+      "end_time": "2025-03-10T14:47:17.588132"
+    },
+    {
+      "name": "unrestricted_account_creation",
+      "success": true,
+      "duration": 5.0744712352752686,
+      "findings": [],
+      "start_time": "2025-03-10T14:47:17.588700",
+      "end_time": "2025-03-10T14:47:22.663171"
+    },
+    {
+      "name": "broken_access_control",
+      "success": true,
+      "duration": 0.012910842895507812,
+      "findings": [],
+      "start_time": "2025-03-10T14:47:22.663960",
+      "end_time": "2025-03-10T14:47:22.676871"
+    },
+    {
+      "name": "broken_authentication",
+      "success": true,
+      "duration": 0.009449958801269531,
+      "findings": [],
+      "start_time": "2025-03-10T14:47:22.677473",
+      "end_time": "2025-03-10T14:47:22.686923"
+    },
+    {
+      "name": "mass_assignment",
+      "success": true,
+      "duration": 7.661645174026489,
+      "findings": [],
+      "start_time": "2025-03-10T14:47:22.689077",
+      "end_time": "2025-03-10T14:47:30.350722"
+    },
+    {
+      "name": "regex_dos",
+      "success": true,
+      "duration": 0,
+      "findings": [
+        {
+          "vulnerability": "RegexDOS Scanner Skipped",
+          "severity": "INFO",
+          "endpoint": "N/A",
+          "details": "The RegexDOS scanner was skipped due to the --dos flag being set to false.",
+          "remediation": "To run the RegexDOS scanner, use the --dos true flag."
+        }
+      ],
+      "start_time": "2025-03-10T14:47:30.352086",
+      "end_time": "2025-03-10T14:47:30.352089"
+    }
+  ],
+  "metadata": {
+    "config_file": "config.yml",
+    "swagger_file": null,
+    "openapi": null
+  },
+  "summary": {
+    "total_scanners": 6,
+    "successful_scanners": 6,
+    "failed_scanners": 0,
+    "total_findings": 1
+  }
+}

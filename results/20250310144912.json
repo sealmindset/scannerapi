@@ -1,0 +1,162 @@
+{
+  "scan_id": "20250310144912",
+  "target": "http://localhost:5002",
+  "start_time": "2025-03-10T14:47:49.273182",
+  "end_time": "2025-03-10T14:49:12.007834",
+  "duration": 82.73465394973755,
+  "scanners": [
+    {
+      "name": "unauthorized_password_change",
+      "success": true,
+      "duration": 1.062708854675293,
+      "findings": [
+        {
+          "vulnerability": "Unauthorized Password Change",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/name1/password",
+          "details": "The API allows users to change passwords of other users without proper authorization. User 'test_user_1741636069_n2itj0' was able to change the password of user 'name1'.",
+          "timestamp": 1741636070.364534,
+          "evidence": {
+            "test_user": "test_user_1741636069_n2itj0",
+            "target_user": "name1",
+            "password_change_request": {
+              "endpoint": "/users/v1/name1/password",
+              "method": "PUT",
+              "headers": {
+                "Authorization": "Bearer eyJhbGciOi..."
+              },
+              "payload": {
+                "password": "NewPass@1741636069"
+              }
+            },
+            "verification": {
+              "login_successful": true,
+              "login_endpoint": "/users/v1/login",
+              "login_payload": {
+                "username": "name1",
+                "password": "NewPass@1741636069"
+              }
+            }
+          },
+          "remediation": "Implement proper authorization checks to ensure users can only change their own passwords. Verify the user's identity from the authentication token and compare it with the requested resource.",
+          "finding_id": "102e4ff3"
+        }
+      ],
+      "start_time": "2025-03-10T14:47:49.302258",
+      "end_time": "2025-03-10T14:47:50.364967"
+    },
+    {
+      "name": "unrestricted_account_creation",
+      "success": true,
+      "duration": 6.150763034820557,
+      "findings": [],
+      "start_time": "2025-03-10T14:47:50.365638",
+      "end_time": "2025-03-10T14:47:56.516401"
+    },
+    {
+      "name": "broken_access_control",
+      "success": true,
+      "duration": 3.129283905029297,
+      "findings": [
+        {
+          "vulnerability": "Privilege Escalation During Registration",
+          "severity": "HIGH",
+          "endpoint": "/users/v1/register",
+          "details": "Users can register accounts with administrative privileges by including the 'admin' field in the registration request.",
+          "timestamp": 1741636077.561933,
+          "evidence": {
+            "registration_payload": {
+              "username": "admin_user_1741636069_g6vppp",
+              "email": "admin_user_1741636069_g6vppp@example.com",
+              "password": "REDACTED",
+              "admin": true
+            },
+            "created_user": {
+              "admin": true,
+              "email": "admin_user_1741636069_g6vppp@example.com",
+              "password": "Admin@1741636069",
+              "username": "admin_user_1741636069_g6vppp"
+            }
+          },
+          "remediation": "Implement server-side validation to ignore or reject privilege-related fields in registration requests. Never trust client-provided values for privilege levels.",
+          "finding_id": "d985f2af"
+        }
+      ],
+      "start_time": "2025-03-10T14:47:56.517277",
+      "end_time": "2025-03-10T14:47:59.646561"
+    },
+    {
+      "name": "broken_authentication",
+      "success": false,
+      "duration": 60.555031061172485,
+      "error": "Authentication failed: { \"status\": \"fail\", \"message\": \"Signature expired. Please log in again.\"}",
+      "start_time": "2025-03-10T14:47:59.647405",
+      "end_time": "2025-03-10T14:49:00.202436"
+    },
+    {
+      "name": "mass_assignment",
+      "success": true,
+      "duration": 11.79548716545105,
+      "findings": [
+        {
+          "vulnerability": "Mass Assignment During Registration",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/register",
+          "details": "The API allows setting admin privileges during user registration via mass assignment.",
+          "timestamp": 1741636152.002943,
+          "evidence": {
+            "request": {
+              "method": "POST",
+              "endpoint": "/users/v1/register",
+              "payload": {
+                "username": "test_mass_reg_1741636150",
+                "email": "test_mass_reg_1741636150@example.com",
+                "password": "Test@1741636150",
+                "admin": true
+              }
+            },
+            "response": {
+              "status_code": 200,
+              "body": "{\"message\": \"Successfully registered. Login to receive an auth token.\", \"status\": \"success\"}"
+            },
+            "verification": {
+              "user": "test_mass_reg_1741636150",
+              "admin_status": true
+            }
+          },
+          "remediation": "Implement proper server-side filtering of request parameters during registration to prevent setting of sensitive fields like 'admin'.",
+          "finding_id": "d9f1a835"
+        }
+      ],
+      "start_time": "2025-03-10T14:49:00.209261",
+      "end_time": "2025-03-10T14:49:12.004748"
+    },
+    {
+      "name": "regex_dos",
+      "success": true,
+      "duration": 0,
+      "findings": [
+        {
+          "vulnerability": "RegexDOS Scanner Skipped",
+          "severity": "INFO",
+          "endpoint": "N/A",
+          "details": "The RegexDOS scanner was skipped due to the --dos flag being set to false.",
+          "remediation": "To run the RegexDOS scanner, use the --dos true flag."
+        }
+      ],
+      "start_time": "2025-03-10T14:49:12.007786",
+      "end_time": "2025-03-10T14:49:12.007792"
+    }
+  ],
+  "metadata": {
+    "config_file": "config.yml",
+    "swagger_file": null,
+    "openapi": null
+  },
+  "summary": {
+    "total_scanners": 6,
+    "successful_scanners": 5,
+    "failed_scanners": 1,
+    "total_findings": 4
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "target": {
+    "base_url": "http://localhost:5002",
+    "auth": {
+      "type": "none"
+    },
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "timeout": 10,
+    "verify_ssl": false
+  },
+  "scanners": [
+    {
+      "name": "excessive_data_exposure",
+      "enabled": true,
+      "config": {
+        "debug_endpoint": "/users/v1/_debug",
+        "register_endpoint": "/users/v1/register",
+        "login_endpoint": "/users/v1/login",
+        "user_endpoint": "/users/v1/{username}",
+        "sensitive_fields": [
+          "password", "passwd", "secret", "token", "api_key", "apikey", "key", 
+          "private", "ssn", "social_security", "credit_card", "cc_number", 
+          "cvv", "cvc", "pin", "hash", "salt", "internal", "hidden", "private",
+          "admin"
+        ]
+      }
+    }
+  ],
+  "logging": {
+    "level": "DEBUG",
+    "format": "text"
+  },
+  "output": {
+    "save_results": true,
+    "directory": "results",
+    "format": "json"
+  }
+}

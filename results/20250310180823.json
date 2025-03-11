@@ -1,0 +1,306 @@
+{
+  "scan_id": "20250310180823",
+  "target": "http://localhost:5002",
+  "start_time": "2025-03-10T18:08:06.609011",
+  "end_time": "2025-03-10T18:08:23.337503",
+  "duration": 16.72849416732788,
+  "scanners": [
+    {
+      "name": "unauthorized_password_change",
+      "success": true,
+      "duration": 1.0732839107513428,
+      "findings": [
+        {
+          "vulnerability": "Unauthorized Password Change",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/name1/password",
+          "details": "The API allows users to change passwords of other users without proper authorization. User 'test_user_1741648086_aun5c7' was able to change the password of user 'name1'.",
+          "timestamp": 1741648087.734177,
+          "evidence": {
+            "test_user": "test_user_1741648086_aun5c7",
+            "target_user": "name1",
+            "password_change_request": {
+              "endpoint": "/users/v1/name1/password",
+              "method": "PUT",
+              "headers": {
+                "Authorization": "Bearer eyJhbGciOi..."
+              },
+              "payload": {
+                "password": "NewPass@1741648086"
+              }
+            },
+            "verification": {
+              "login_successful": true,
+              "login_endpoint": "/users/v1/login",
+              "login_payload": {
+                "username": "name1",
+                "password": "NewPass@1741648086"
+              }
+            }
+          },
+          "remediation": "Implement proper authorization checks to ensure users can only change their own passwords. Verify the user's identity from the authentication token and compare it with the requested resource.",
+          "finding_id": "671eb867"
+        }
+      ],
+      "start_time": "2025-03-10T18:08:06.661338",
+      "end_time": "2025-03-10T18:08:07.734622"
+    },
+    {
+      "name": "unrestricted_account_creation",
+      "success": true,
+      "duration": 0.0037093162536621094,
+      "findings": [
+        {
+          "vulnerability": "Unrestricted Account Creation - No Rate Limiting",
+          "severity": "HIGH",
+          "endpoint": "/api/users",
+          "details": "The API does not implement rate limiting for account creation. Successfully created 10 accounts in rapid succession without any restrictions.",
+          "timestamp": 1741648087.736785,
+          "evidence": {
+            "successful_creations": 10,
+            "test_count": 10,
+            "time_between_requests": "0.1 seconds"
+          },
+          "remediation": "Implement rate limiting for account creation to prevent abuse and automated account creation attacks.",
+          "finding_id": "9e2561e7"
+        },
+        {
+          "vulnerability": "Unrestricted Account Creation - Lack of Input Validation",
+          "severity": "CRITICAL",
+          "endpoint": "/api/users",
+          "details": "The API allows account creation with invalid input including SQL injection patterns in the username field. This could potentially lead to SQL injection attacks.",
+          "timestamp": 1741648087.737494,
+          "evidence": {
+            "request": {
+              "username": "' OR 1=1 --",
+              "email": "sqli@example.com",
+              "password": "Test@123456"
+            },
+            "response": {
+              "status_code": 201,
+              "body": "{\"id\": 123, \"username\": \"' OR 1=1 --\", \"email\": \"sqli@example.com\"}"
+            }
+          },
+          "remediation": "Implement proper input validation and sanitization for all user registration fields to prevent SQL injection and other injection attacks.",
+          "finding_id": "79d7eb5c"
+        },
+        {
+          "vulnerability": "Unrestricted Account Creation - Username Enumeration",
+          "severity": "MEDIUM",
+          "endpoint": "/api/users",
+          "details": "The API reveals whether a username already exists during account creation, which can be used for user enumeration attacks to discover valid usernames.",
+          "timestamp": 1741648087.738369,
+          "evidence": {
+            "request": {
+              "username": "existing_user",
+              "email": "existing@example.com",
+              "password": "Test@123456"
+            },
+            "response": {
+              "status_code": 400,
+              "body": "{\"error\": \"Username already exists\"}"
+            }
+          },
+          "remediation": "Use generic error messages that don't reveal whether a username exists. For example, use 'Invalid registration information' instead of 'Username already exists'.",
+          "finding_id": "9599519e"
+        }
+      ],
+      "start_time": "2025-03-10T18:08:07.735335",
+      "end_time": "2025-03-10T18:08:07.739044"
+    },
+    {
+      "name": "broken_access_control",
+      "success": true,
+      "duration": 3.135119915008545,
+      "findings": [
+        {
+          "vulnerability": "Privilege Escalation During Registration",
+          "severity": "HIGH",
+          "endpoint": "/users/v1/register",
+          "details": "Users can register accounts with administrative privileges by including the 'admin' field in the registration request.",
+          "timestamp": 1741648088.7815459,
+          "evidence": {
+            "registration_payload": {
+              "username": "admin_user_1741648086_7asc2n",
+              "email": "admin_user_1741648086_7asc2n@example.com",
+              "password": "REDACTED",
+              "admin": true
+            },
+            "created_user": {
+              "admin": true,
+              "email": "admin_user_1741648086_7asc2n@example.com",
+              "password": "Admin@1741648086",
+              "username": "admin_user_1741648086_7asc2n"
+            }
+          },
+          "remediation": "Implement server-side validation to ignore or reject privilege-related fields in registration requests. Never trust client-provided values for privilege levels.",
+          "finding_id": "6932f8ef"
+        }
+      ],
+      "start_time": "2025-03-10T18:08:07.739655",
+      "end_time": "2025-03-10T18:08:10.874775"
+    },
+    {
+      "name": "broken_authentication",
+      "success": true,
+      "duration": 0.5742659568786621,
+      "findings": [
+        {
+          "vulnerability": "Exposed Credentials via Debug Endpoint",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/_debug",
+          "details": "The API exposes user credentials via the debug endpoint (/users/v1/_debug). These credentials can be used to login and obtain valid authentication tokens.",
+          "timestamp": 1741648090.8922749,
+          "evidence": {
+            "debug_endpoint": "/users/v1/_debug",
+            "login_endpoint": "/users/v1/login",
+            "username": "name1",
+            "password_exposed": true,
+            "login_successful": true
+          },
+          "remediation": "Remove or properly secure the debug endpoint. Never expose user credentials in API responses. Implement proper authentication controls and ensure debug endpoints are not accessible in production environments.",
+          "finding_id": "b6a9fc96"
+        }
+      ],
+      "start_time": "2025-03-10T18:08:10.875505",
+      "end_time": "2025-03-10T18:08:11.449771"
+    },
+    {
+      "name": "jwt_vulnerabilities",
+      "success": true,
+      "duration": 0.014261007308959961,
+      "findings": [
+        {
+          "vulnerability": "Configured Long-Lived JWT Tokens",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/login",
+          "details": "The system is configured to issue JWT tokens with an extremely long lifetime of 355.0 days. This significantly increases the risk of token theft and misuse.",
+          "timestamp": 1741648091.453349,
+          "evidence": {
+            "configured_expiration_days": 355.0,
+            "recommended_maximum_days": 1
+          },
+          "remediation": "Configure shorter expiration times for JWT tokens (15-60 minutes is recommended). For longer sessions, implement refresh tokens with proper security controls.",
+          "finding_id": "5dc8a15a"
+        },
+        {
+          "vulnerability": "JWT 'none' Algorithm Vulnerability",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/me",
+          "details": "The API accepts JWT tokens with the 'none' algorithm, allowing authentication bypass.",
+          "timestamp": 1741648091.4598458,
+          "evidence": null,
+          "remediation": "Ensure that the JWT library explicitly rejects tokens with the 'none' algorithm.",
+          "finding_id": "a75c87a8"
+        },
+        {
+          "vulnerability": "JWT Weak Signing Key",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/login",
+          "details": "The API uses a weak signing key ('secret') for JWT tokens, allowing token forgery.",
+          "timestamp": 1741648091.460494,
+          "evidence": null,
+          "remediation": "Use a strong, randomly generated signing key with at least 256 bits of entropy.",
+          "finding_id": "f1a15710"
+        },
+        {
+          "vulnerability": "Missing JWT Signature Validation",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/me",
+          "details": "The API does not properly validate JWT signatures, allowing attackers to modify token content without detection.",
+          "timestamp": 1741648091.460922,
+          "evidence": null,
+          "remediation": "Ensure that the JWT library properly validates token signatures and rejects tokens with invalid signatures.",
+          "finding_id": "1f4e3814"
+        },
+        {
+          "vulnerability": "JWT Expiration Manipulation",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/me",
+          "details": "The API does not properly validate the integrity of JWT tokens, allowing attackers to modify the expiration time.",
+          "timestamp": 1741648091.4613278,
+          "evidence": null,
+          "remediation": "Ensure that the JWT library properly validates token signatures and rejects tokens with invalid signatures.",
+          "finding_id": "59abcfaa"
+        },
+        {
+          "vulnerability": "JWT Token Tampering - None algorithm",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/me",
+          "details": "The API does not properly validate the integrity of JWT tokens, allowing attackers to modify the payload using None algorithm to gain elevated privileges.",
+          "timestamp": 1741648091.4616551,
+          "evidence": null,
+          "remediation": "Ensure that the JWT library properly validates token signatures and rejects tokens with invalid signatures or using the 'none' algorithm.",
+          "finding_id": "a3ed0e3b"
+        }
+      ],
+      "start_time": "2025-03-10T18:08:11.450499",
+      "end_time": "2025-03-10T18:08:11.464760"
+    },
+    {
+      "name": "mass_assignment",
+      "success": true,
+      "duration": 11.86752700805664,
+      "findings": [
+        {
+          "vulnerability": "Mass Assignment During Registration",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/register",
+          "details": "The API allows setting admin privileges during user registration via mass assignment.",
+          "timestamp": 1741648103.3320892,
+          "evidence": {
+            "request": {
+              "method": "POST",
+              "endpoint": "/users/v1/register",
+              "payload": {
+                "username": "test_mass_reg_1741648102",
+                "email": "test_mass_reg_1741648102@example.com",
+                "password": "Test@1741648102",
+                "admin": true
+              }
+            },
+            "response": {
+              "status_code": 200,
+              "body": "{\"message\": \"Successfully registered. Login to receive an auth token.\", \"status\": \"success\"}"
+            },
+            "verification": {
+              "user": "test_mass_reg_1741648102",
+              "admin_status": true
+            }
+          },
+          "remediation": "Implement proper server-side filtering of request parameters during registration to prevent setting of sensitive fields like 'admin'.",
+          "finding_id": "e45ad8b1"
+        }
+      ],
+      "start_time": "2025-03-10T18:08:11.466476",
+      "end_time": "2025-03-10T18:08:23.334003"
+    },
+    {
+      "name": "regex_dos",
+      "success": true,
+      "duration": 0,
+      "findings": [
+        {
+          "vulnerability": "RegexDOS Scanner Skipped",
+          "severity": "INFO",
+          "endpoint": "N/A",
+          "details": "The RegexDOS scanner was skipped due to the --dos flag being set to false.",
+          "remediation": "To run the RegexDOS scanner, use the --dos true flag."
+        }
+      ],
+      "start_time": "2025-03-10T18:08:23.337458",
+      "end_time": "2025-03-10T18:08:23.337465"
+    }
+  ],
+  "metadata": {
+    "config_file": "config.yml",
+    "swagger_file": null,
+    "openapi": null
+  },
+  "summary": {
+    "total_scanners": 7,
+    "successful_scanners": 7,
+    "failed_scanners": 0,
+    "total_findings": 14
+  }
+}

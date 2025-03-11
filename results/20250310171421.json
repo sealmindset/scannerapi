@@ -1,0 +1,187 @@
+{
+  "scan_id": "20250310171421",
+  "target": "http://localhost:5002",
+  "start_time": "2025-03-10T17:13:58.946293",
+  "end_time": "2025-03-10T17:14:21.691909",
+  "duration": 22.745618104934692,
+  "scanners": [
+    {
+      "name": "unauthorized_password_change",
+      "success": true,
+      "duration": 1.0621397495269775,
+      "findings": [
+        {
+          "vulnerability": "Unauthorized Password Change",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/name1/password",
+          "details": "The API allows users to change passwords of other users without proper authorization. User 'test_user_1741644838_k0mk94' was able to change the password of user 'name1'.",
+          "timestamp": 1741644840.063858,
+          "evidence": {
+            "test_user": "test_user_1741644838_k0mk94",
+            "target_user": "name1",
+            "password_change_request": {
+              "endpoint": "/users/v1/name1/password",
+              "method": "PUT",
+              "headers": {
+                "Authorization": "Bearer eyJhbGciOi..."
+              },
+              "payload": {
+                "password": "NewPass@1741644838"
+              }
+            },
+            "verification": {
+              "login_successful": true,
+              "login_endpoint": "/users/v1/login",
+              "login_payload": {
+                "username": "name1",
+                "password": "NewPass@1741644838"
+              }
+            }
+          },
+          "remediation": "Implement proper authorization checks to ensure users can only change their own passwords. Verify the user's identity from the authentication token and compare it with the requested resource.",
+          "finding_id": "e017bbc8"
+        }
+      ],
+      "start_time": "2025-03-10T17:13:59.002304",
+      "end_time": "2025-03-10T17:14:00.064444"
+    },
+    {
+      "name": "unrestricted_account_creation",
+      "success": true,
+      "duration": 6.113166093826294,
+      "findings": [],
+      "start_time": "2025-03-10T17:14:00.065607",
+      "end_time": "2025-03-10T17:14:06.178773"
+    },
+    {
+      "name": "broken_access_control",
+      "success": true,
+      "duration": 3.1093130111694336,
+      "findings": [
+        {
+          "vulnerability": "Privilege Escalation During Registration",
+          "severity": "HIGH",
+          "endpoint": "/users/v1/register",
+          "details": "Users can register accounts with administrative privileges by including the 'admin' field in the registration request.",
+          "timestamp": 1741644847.2208588,
+          "evidence": {
+            "registration_payload": {
+              "username": "admin_user_1741644838_1so45m",
+              "email": "admin_user_1741644838_1so45m@example.com",
+              "password": "REDACTED",
+              "admin": true
+            },
+            "created_user": {
+              "admin": true,
+              "email": "admin_user_1741644838_1so45m@example.com",
+              "password": "Admin@1741644838",
+              "username": "admin_user_1741644838_1so45m"
+            }
+          },
+          "remediation": "Implement server-side validation to ignore or reject privilege-related fields in registration requests. Never trust client-provided values for privilege levels.",
+          "finding_id": "49f4eeac"
+        }
+      ],
+      "start_time": "2025-03-10T17:14:06.179473",
+      "end_time": "2025-03-10T17:14:09.288786"
+    },
+    {
+      "name": "broken_authentication",
+      "success": true,
+      "duration": 0.5548317432403564,
+      "findings": [
+        {
+          "vulnerability": "Exposed Credentials via Debug Endpoint",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/_debug",
+          "details": "The API exposes user credentials via the debug endpoint (/users/v1/_debug). These credentials can be used to login and obtain valid authentication tokens.",
+          "timestamp": 1741644849.30688,
+          "evidence": {
+            "debug_endpoint": "/users/v1/_debug",
+            "login_endpoint": "/users/v1/login",
+            "username": "name1",
+            "password_exposed": true,
+            "login_successful": true
+          },
+          "remediation": "Remove or properly secure the debug endpoint. Never expose user credentials in API responses. Implement proper authentication controls and ensure debug endpoints are not accessible in production environments.",
+          "finding_id": "a4cbd2e4"
+        }
+      ],
+      "start_time": "2025-03-10T17:14:09.289420",
+      "end_time": "2025-03-10T17:14:09.844252"
+    },
+    {
+      "name": "jwt_vulnerabilities",
+      "success": false,
+      "duration": 0.022696971893310547,
+      "error": "'Scanner' object has no attribute '_add_finding'",
+      "start_time": "2025-03-10T17:14:09.845087",
+      "end_time": "2025-03-10T17:14:09.867784"
+    },
+    {
+      "name": "mass_assignment",
+      "success": true,
+      "duration": 11.818968057632446,
+      "findings": [
+        {
+          "vulnerability": "Mass Assignment During Registration",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/register",
+          "details": "The API allows setting admin privileges during user registration via mass assignment.",
+          "timestamp": 1741644861.68649,
+          "evidence": {
+            "request": {
+              "method": "POST",
+              "endpoint": "/users/v1/register",
+              "payload": {
+                "username": "test_mass_reg_1741644860",
+                "email": "test_mass_reg_1741644860@example.com",
+                "password": "Test@1741644860",
+                "admin": true
+              }
+            },
+            "response": {
+              "status_code": 200,
+              "body": "{\"message\": \"Successfully registered. Login to receive an auth token.\", \"status\": \"success\"}"
+            },
+            "verification": {
+              "user": "test_mass_reg_1741644860",
+              "admin_status": true
+            }
+          },
+          "remediation": "Implement proper server-side filtering of request parameters during registration to prevent setting of sensitive fields like 'admin'.",
+          "finding_id": "4c3feb84"
+        }
+      ],
+      "start_time": "2025-03-10T17:14:09.869182",
+      "end_time": "2025-03-10T17:14:21.688150"
+    },
+    {
+      "name": "regex_dos",
+      "success": true,
+      "duration": 0,
+      "findings": [
+        {
+          "vulnerability": "RegexDOS Scanner Skipped",
+          "severity": "INFO",
+          "endpoint": "N/A",
+          "details": "The RegexDOS scanner was skipped due to the --dos flag being set to false.",
+          "remediation": "To run the RegexDOS scanner, use the --dos true flag."
+        }
+      ],
+      "start_time": "2025-03-10T17:14:21.691864",
+      "end_time": "2025-03-10T17:14:21.691871"
+    }
+  ],
+  "metadata": {
+    "config_file": "config.yml",
+    "swagger_file": null,
+    "openapi": null
+  },
+  "summary": {
+    "total_scanners": 7,
+    "successful_scanners": 6,
+    "failed_scanners": 1,
+    "total_findings": 5
+  }
+}

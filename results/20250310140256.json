@@ -1,0 +1,64 @@
+{
+  "scan_id": "20250310140256",
+  "target": "http://localhost:5002",
+  "start_time": "2025-03-10T12:54:58.419531",
+  "end_time": "2025-03-10T14:02:56.499971",
+  "duration": 4078.0804419517517,
+  "scanners": [
+    {
+      "name": "unauthorized_password_change",
+      "success": true,
+      "duration": 127.04326605796814,
+      "findings": [],
+      "start_time": "2025-03-10T12:54:58.491134",
+      "end_time": "2025-03-10T12:57:05.534400"
+    },
+    {
+      "name": "unrestricted_account_creation",
+      "success": true,
+      "duration": 1148.3867390155792,
+      "findings": [],
+      "start_time": "2025-03-10T12:57:05.537285",
+      "end_time": "2025-03-10T13:16:13.924024"
+    },
+    {
+      "name": "broken_access_control",
+      "success": true,
+      "duration": 381.13629388809204,
+      "findings": [],
+      "start_time": "2025-03-10T13:16:13.926457",
+      "end_time": "2025-03-10T13:22:35.062751"
+    },
+    {
+      "name": "broken_authentication",
+      "success": true,
+      "duration": 254.09504079818726,
+      "findings": [],
+      "start_time": "2025-03-10T13:22:35.065178",
+      "end_time": "2025-03-10T13:26:49.160219"
+    },
+    {
+      "name": "mass_assignment",
+      "success": true,
+      "duration": 2167.329283952713,
+      "findings": [],
+      "start_time": "2025-03-10T13:26:49.166291",
+      "end_time": "2025-03-10T14:02:56.495575"
+    }
+  ],
+  "metadata": {
+    "config_file": "config.yml",
+    "swagger_file": "swagger/openapi3.yml",
+    "openapi": {
+      "spec_path": "swagger/openapi3.yml",
+      "endpoint_count": 14,
+      "source": "openapi"
+    }
+  },
+  "summary": {
+    "total_scanners": 5,
+    "successful_scanners": 5,
+    "failed_scanners": 0,
+    "total_findings": 0
+  }
+}

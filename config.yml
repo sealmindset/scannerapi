@@ -1,0 +1,284 @@
+# API Security Scanner Configuration
+
+# Target API information
+target:
+  url: "http://localhost:5002"  # Primary URL key used by scanners
+  base_url: "http://localhost:5002"  # Kept for backward compatibility
+  auth:
+    type: "none"  # Options: none, basic, bearer, api_key
+    # token: "your-auth-token"  # For bearer auth
+    # username: "user"  # For basic auth
+    # password: "pass"  # For basic auth
+    # header_name: "X-API-Key"  # For api_key auth
+    # header_value: "your-api-key"  # For api_key auth
+  headers:
+    Content-Type: "application/json"
+    Accept: "application/json"
+  timeout: 30  # Request timeout in seconds
+  verify_ssl: true  # Whether to verify SSL certificates
+
+# Scanner modules to run
+scanners:
+  - name: "unauthorized_password_change"
+    enabled: true
+    concurrent: false
+    config:
+      debug_endpoint: "/users/v1/_debug"
+      register_endpoint: "/users/v1/register"
+      login_endpoint: "/users/v1/login"
+      password_change_endpoint: "/users/v1/{username}/password"
+      username_field: "username"
+      password_field: "password"
+      email_field: "email"
+      admin_field: "admin"
+      auth_token_field: "auth_token"
+      success_status_codes: [200, 201, 204]
+      test_delay: 1.0
+      
+  - name: "unrestricted_account_creation"
+    enabled: true
+    concurrent: false
+    config:
+      debug: true
+      simulate_vulnerabilities: true
+      # Original account creation endpoints
+      endpoints:
+        - "/api/users"
+        - "/api/register"
+      payloads:
+        - username: "test_user"
+          email: "test@example.com"
+          password: "Password123!"
+      
+      # Unauthorized password change vulnerability test configuration
+      debug_endpoint: "/users/v1/_debug"
+      register_endpoint: "/users/v1/register"
+      login_endpoint: "/users/v1/login"
+      password_change_endpoint: "/users/v1/{username}/password"
+      username_field: "username"
+      password_field: "password"
+      email_field: "email"
+      admin_field: "admin"
+      auth_token_field: "auth_token"
+
+  - name: "mass_assignment"
+    enabled: true
+    concurrent: true
+    config:
+      endpoints:
+        - "/api/users"
+        - "/api/profile"
+        - "/users/v1/{username}"
+      sensitive_fields:
+        - "role"
+        - "is_admin"
+        - "admin"
+        - "isAdmin"
+        - "permissions"
+      test_values:
+        role: "admin"
+        admin: true
+        is_admin: true
+        isAdmin: true
+        permissions: ["admin", "superuser", "*"]
+      # Configuration for role change testing
+      debug_endpoint: "/users/v1/_debug"
+      
+  - name: "broken_access_control"
+    enabled: true
+    concurrent: false
+    config:
+      debug_endpoint: "/users/v1/_debug"
+      register_endpoint: "/users/v1/register"
+      login_endpoint: "/users/v1/login"
+      admin_endpoint: "/admin"
+      user_endpoint: "/users/{username}"
+      username_field: "username"
+      password_field: "password"
+      email_field: "email"
+      admin_field: "admin"
+      auth_token_field: "auth_token"
+      success_status_codes: [200, 201, 204]
+      test_delay: 1.0
+      protected_resources:
+        - endpoint: "/admin/users"
+          method: "GET"
+        - endpoint: "/admin/settings"
+          method: "GET"
+        - endpoint: "/users"
+          method: "GET"
+          
+  - name: "broken_authentication"
+    enabled: true
+    concurrent: false
+    config:
+      login_endpoint: "/users/v1/login"
+      refresh_token_endpoint: "/users/v1/refresh"
+      user_info_endpoint: "/users/v1/me"
+      debug_endpoint: "/users/v1/_debug"
+      register_endpoint: "/users/v1/register"
+      username_field: "username"
+      password_field: "password"
+      access_token_field: "auth_token"
+      refresh_token_field: "refresh_token"
+      id_token_field: "id_token"
+      success_status_codes: [200, 201, 204]
+      test_delay: 1.0
+      token_expiration_time: 30672000  # 355 days in seconds (355 * 24 * 60 * 60)
+      token_test_interval: 300  # Test every 5 minutes
+      token_test_duration: 3600  # Test for 1 hour
+      protected_endpoints:
+        - "/me"
+        - "/books/v1"
+        - "/books/v1/{book_title}"
+
+  - name: "regex_dos"
+    enabled: true
+    concurrent: false
+    run_last: true  # Flag to indicate this scanner should run last
+    config:
+      email_update_endpoint: "/users/v1/{username}/email"
+      login_endpoint: "/users/v1/login"
+      register_endpoint: "/users/v1/register"
+      username_field: "username"
+      password_field: "password"
+      email_field: "email"
+      token_field: "auth_token"
+      timeout_threshold: 10  # Increased timeout threshold for better detection
+      max_string_length: 10000
+      test_string_pattern: "a"
+      test_username: "testuser"
+      test_password: "Password123!"
+      test_email: "test@example.com"
+      # Only run once after finding the first vulnerability
+      stop_on_first_finding: true
+      
+  - name: "jwt_vulnerabilities"
+    enabled: true
+    concurrent: false
+    config:
+      login_endpoint: "/users/v1/login"
+      refresh_token_endpoint: "/users/v1/refresh"
+      user_info_endpoint: "/users/v1/me"
+      debug_endpoint: "/users/v1/_debug"
+      register_endpoint: "/users/v1/register"
+      debug: true
+      simulate_vulnerabilities: true
+      username_field: "username"
+      password_field: "password"
+      access_token_field: "auth_token"
+      refresh_token_field: "refresh_token"
+      id_token_field: "id_token"
+      success_status_codes: [200, 201, 204]
+      test_delay: 1.0
+      token_expiration_time: 30672000  # 355 days in seconds (355 * 24 * 60 * 60)
+      # JWT-specific configuration
+      weak_keys: [
+        "",  # Empty key
+        "secret",  # Default in many libraries
+        "key",  # Simple key
+        "password",  # Common password
+        "1234567890",  # Numeric sequence
+        "qwertyuiop",  # Keyboard sequence
+        "jwt_secret",  # Descriptive name
+        "your-256-bit-secret",  # Example from docs
+        "your_secret_key",  # Example from docs
+        "mysecretkey",  # Common pattern
+        "secretkey",  # Common pattern
+        "test",  # Testing key
+        "testing",  # Testing key
+        "development",  # Environment-specific
+        "dev",  # Environment-specific
+        "staging",  # Environment-specific
+        "production",  # Environment-specific
+        "prod"  # Environment-specific
+      ]
+      jwt_algorithms: [
+        "none",  # None algorithm vulnerability
+        "HS256",  # HMAC with SHA-256
+        "HS384",  # HMAC with SHA-384
+        "HS512"   # HMAC with SHA-512
+      ]
+      
+  - name: "excessive_data_exposure"
+    enabled: true
+    concurrent: false
+    config:
+      debug_endpoint: "/users/v1/_debug"
+      register_endpoint: "/users/v1/register"
+      login_endpoint: "/users/v1/login"
+      user_endpoint: "/users/v1/{username}"
+      username_field: "username"
+      password_field: "password"
+      email_field: "email"
+      token_field: "auth_token"
+      sensitive_fields: [
+        "password", "passwd", "secret", "token", "api_key", "apikey", "key", 
+        "private", "ssn", "social_security", "credit_card", "cc_number", 
+        "cvv", "cvc", "pin", "hash", "salt", "internal", "hidden", "private",
+        "admin"
+      ]
+      success_status_codes: [200, 201, 204]
+      
+  - name: "sql_injection"
+    enabled: true
+    concurrent: false
+    config:
+      endpoints: [
+        "/users/v1/{username}",
+        "/users/v1/search",
+        "/products/search",
+        "/api/search",
+        "/api/query",
+        "/api/users/{id}",
+        "/api/products/{id}"
+      ]
+      test_delay: 0.5
+      debug: true
+      simulate_vulnerabilities: false
+      payloads: [
+        "' OR '1'='1",
+        "' OR 1=1 --",
+        "\" OR \"\"=\"",
+        "' OR '1'='1' --",
+        "admin' --",
+        "1' OR '1' = '1"
+      ]
+      error_patterns: [
+        "SQL syntax.*?MySQL",
+        "Warning.*?mysqli",
+        "PostgreSQL.*?ERROR",
+        "ORA-[0-9][0-9][0-9][0-9]",
+        "syntax error",
+        "unclosed quotation mark",
+        "You have an error in your SQL syntax"
+      ]
+      protected_endpoints: [
+        "/users/v1/me",
+        "/books/v1",
+        "/admin"
+      ]
+
+# Logging configuration
+logging:
+  level: "INFO"  # DEBUG, INFO, WARN, ERROR, FATAL
+  format: "text"  # text, json
+  output: "scanner.log"  # File to write logs to (optional)
+  max_size: 10  # Max log file size in MB
+  backup_count: 3  # Number of backup log files to keep
+
+# Output configuration
+output:
+  save_results: true
+  directory: "results"
+  format: "json"  # json, yaml, text
+
+# Execution configuration
+execution:
+  max_concurrent: 5  # Maximum number of concurrent scanners
+  request_delay: 0.5  # Delay between requests in seconds
+  max_retries: 3  # Maximum number of retries for failed requests
+  retry_delay: 1  # Delay between retries in seconds
+
+# Environment (for environment-specific configurations)
+environment: "dev"  # dev, test, prod

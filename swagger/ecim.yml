@@ -1,0 +1,231 @@
+openapi: 3.0.3
+info:
+  title: "ECIM API"
+  version: "1.0.0"
+  description: "This API definition was converted from a Postman collection."
+servers:
+  - url: "https://9n37afa8hc.execute-api.us-east-1.amazonaws.com/Test"
+paths:
+  /v1/users:
+    post:
+      summary: "Sign Up"
+      description: "Create a new user account."
+      operationId: signUp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ClientID:
+                  type: string
+                Email:
+                  type: string
+                  format: email
+                Password:
+                  type: string
+                CustomerNumber:
+                  type: string
+                OrderNumber:
+                  type: string
+                SiqUserType:
+                  type: string
+              required:
+                - ClientID
+                - Email
+                - Password
+                - CustomerNumber
+                - OrderNumber
+                - SiqUserType
+            example:
+              ClientID: "6k3brt9u2np64drc5l1b13625t"
+              Email: "mh4@sn.com"
+              Password: "Password#123"
+              CustomerNumber: "123456"
+              OrderNumber: "123123"
+              SiqUserType: "PRIMARY"
+      responses:
+        '200':
+          description: "User created successfully."
+  /v1/token:
+    post:
+      summary: "Sign In"
+      description: "Authenticate a user and return a token."
+      operationId: signIn
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ClientID:
+                  type: string
+                Email:
+                  type: string
+                  format: email
+                Password:
+                  type: string
+              required:
+                - ClientID
+                - Email
+                - Password
+            example:
+              ClientID: "6k3brt9u2np64drc5l1b13625t"
+              Email: "mh4@sn.com"
+              Password: "Password#123"
+      responses:
+        '200':
+          description: "User authenticated successfully."
+    put:
+      summary: "Refresh Token"
+      description: "Refresh an authentication token using a refresh token."
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ClientID:
+                  type: string
+                RefreshToken:
+                  type: string
+              required:
+                - ClientID
+                - RefreshToken
+            example:
+              ClientID: "6k3brt9u2np64drc5l1b13625t"
+              RefreshToken: "your-refresh-token"
+      responses:
+        '200':
+          description: "Token refreshed successfully."
+  /v1/users/{userId}:
+    get:
+      summary: "Get User Attributes"
+      description: "Retrieve attributes of a specific user."
+      operationId: getUserAttributes
+      parameters:
+        - in: path
+          name: userId
+          description: "ID of the user."
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: Authorization
+          description: "Bearer token."
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: "User attributes retrieved successfully."
+    patch:
+      summary: "Update User"
+      description: "Update user details."
+      operationId: updateUser
+      security:
+        - awsV4: []
+      parameters:
+        - in: path
+          name: userId
+          description: "ID of the user to update."
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                Email:
+                  type: string
+                  format: email
+              required:
+                - Email
+            example:
+              Email: "mh4updated@sn.com"
+      responses:
+        '200':
+          description: "User updated successfully."
+  /v1/users/{userId}/password:
+    patch:
+      summary: "Change Password"
+      description: "Change a user's password."
+      operationId: changePassword
+      parameters:
+        - in: path
+          name: userId
+          description: "ID of the user."
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                AccessToken:
+                  type: string
+                OldPassword:
+                  type: string
+                NewPassword:
+                  type: string
+              required:
+                - AccessToken
+                - OldPassword
+                - NewPassword
+            example:
+              AccessToken: "your-access-token"
+              OldPassword: "Password#123"
+              NewPassword: "Password#123!"
+      responses:
+        '200':
+          description: "Password changed successfully."
+  /v1/merge/users/{mergedUserId}:
+    patch:
+      summary: "Publish Merged Record"
+      description: "Publish a merged user record."
+      operationId: publishMergedRecord
+      security:
+        - awsV4: []
+      parameters:
+        - in: path
+          name: mergedUserId
+          description: "ID of the merged user record."
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                NewCustomerNumber:
+                  type: string
+              required:
+                - NewCustomerNumber
+            example:
+              NewCustomerNumber: "989889898"
+      responses:
+        '200':
+          description: "Merged record published successfully."
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+    awsV4:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: "AWS Signature Version 4 authentication header."

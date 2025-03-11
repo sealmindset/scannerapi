@@ -1,0 +1,338 @@
+{
+  "scan_id": "20250310122444",
+  "target": "http://localhost:5002",
+  "start_time": "2025-03-10T12:22:00.223881",
+  "end_time": "2025-03-10T12:24:44.885373",
+  "duration": 164.66149306297302,
+  "scanners": [
+    {
+      "name": "unauthorized_password_change",
+      "success": true,
+      "duration": 55.14809489250183,
+      "findings": [
+        {
+          "vulnerability": "Unauthorized Password Change",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/name1/password",
+          "details": "The API allows users to change passwords of other users without proper authorization. User 'test_user_1741627320_m7hhaf' was able to change the password of user 'name1'.",
+          "timestamp": 1741627375.4462469,
+          "evidence": {
+            "test_user": "test_user_1741627320_m7hhaf",
+            "target_user": "name1",
+            "password_change_request": {
+              "endpoint": "/users/v1/name1/password",
+              "method": "PUT",
+              "headers": {
+                "Authorization": "Bearer eyJhbGciOi..."
+              },
+              "payload": {
+                "password": "NewPass@1741627320"
+              }
+            },
+            "verification": {
+              "login_successful": true,
+              "login_endpoint": "/users/v1/login",
+              "login_payload": {
+                "username": "name1",
+                "password": "NewPass@1741627320"
+              }
+            }
+          },
+          "remediation": "Implement proper authorization checks to ensure users can only change their own passwords. Verify the user's identity from the authentication token and compare it with the requested resource.",
+          "finding_id": "33e9e499"
+        }
+      ],
+      "start_time": "2025-03-10T12:22:00.298607",
+      "end_time": "2025-03-10T12:22:55.446702"
+    },
+    {
+      "name": "unrestricted_account_creation",
+      "success": true,
+      "duration": 7.256104946136475,
+      "findings": [
+        {
+          "vulnerability": "Unrestricted Account Creation - Lack of Input Validation",
+          "severity": "HIGH",
+          "endpoint": "/users/v1/register",
+          "details": "The API allows account creation with invalid input: Empty username",
+          "timestamp": 1741627375.463564,
+          "evidence": {
+            "request": {
+              "username": "",
+              "email": "test@example.com",
+              "password": "Test@123456"
+            },
+            "response": {
+              "status_code": 200,
+              "headers": {
+                "Server": "Werkzeug/2.2.3 Python/3.11.11",
+                "Date": "Mon, 10 Mar 2025 17:22:55 GMT",
+                "Content-Type": "application/json",
+                "Content-Length": "69",
+                "Connection": "close"
+              },
+              "body": "{ \"status\": \"fail\", \"message\": \"User already exists. Please Log in.\"}"
+            }
+          },
+          "remediation": "Implement proper input validation for all user registration fields.",
+          "finding_id": "e3c7f8a6"
+        },
+        {
+          "vulnerability": "Unrestricted Account Creation - Lack of Input Validation",
+          "severity": "HIGH",
+          "endpoint": "/users/v1/register",
+          "details": "The API allows account creation with invalid input: Invalid email format",
+          "timestamp": 1741627376.490091,
+          "evidence": {
+            "request": {
+              "username": "test_user_1741627375",
+              "email": "invalid-email",
+              "password": "Test@123456"
+            },
+            "response": {
+              "status_code": 200,
+              "headers": {
+                "Server": "Werkzeug/2.2.3 Python/3.11.11",
+                "Date": "Mon, 10 Mar 2025 17:22:56 GMT",
+                "Content-Type": "application/json",
+                "Content-Length": "69",
+                "Connection": "close"
+              },
+              "body": "{ \"status\": \"fail\", \"message\": \"User already exists. Please Log in.\"}"
+            }
+          },
+          "remediation": "Implement proper input validation for all user registration fields.",
+          "finding_id": "7f382b63"
+        },
+        {
+          "vulnerability": "Unrestricted Account Creation - Lack of Input Validation",
+          "severity": "HIGH",
+          "endpoint": "/users/v1/register",
+          "details": "The API allows account creation with invalid input: Short password",
+          "timestamp": 1741627377.510012,
+          "evidence": {
+            "request": {
+              "username": "test_user_1741627375",
+              "email": "test1741627375@example.com",
+              "password": "short"
+            },
+            "response": {
+              "status_code": 200,
+              "headers": {
+                "Server": "Werkzeug/2.2.3 Python/3.11.11",
+                "Date": "Mon, 10 Mar 2025 17:22:57 GMT",
+                "Content-Type": "application/json",
+                "Content-Length": "69",
+                "Connection": "close"
+              },
+              "body": "{ \"status\": \"fail\", \"message\": \"User already exists. Please Log in.\"}"
+            }
+          },
+          "remediation": "Implement proper input validation for all user registration fields.",
+          "finding_id": "af172359"
+        },
+        {
+          "vulnerability": "Unrestricted Account Creation - Lack of Input Validation",
+          "severity": "HIGH",
+          "endpoint": "/users/v1/register",
+          "details": "The API allows account creation with invalid input: SQL injection in username",
+          "timestamp": 1741627378.521253,
+          "evidence": {
+            "request": {
+              "username": "' OR 1=1 --",
+              "email": "sqli1741627375@example.com",
+              "password": "Test@123456"
+            },
+            "response": {
+              "status_code": 200,
+              "headers": {
+                "Server": "Werkzeug/2.2.3 Python/3.11.11",
+                "Date": "Mon, 10 Mar 2025 17:22:58 GMT",
+                "Content-Type": "application/json",
+                "Content-Length": "69",
+                "Connection": "close"
+              },
+              "body": "{ \"status\": \"fail\", \"message\": \"User already exists. Please Log in.\"}"
+            }
+          },
+          "remediation": "Implement proper input validation for all user registration fields.",
+          "finding_id": "f89cb479"
+        },
+        {
+          "vulnerability": "Unrestricted Account Creation - Lack of Input Validation",
+          "severity": "HIGH",
+          "endpoint": "/users/v1/register",
+          "details": "The API allows account creation with invalid input: XSS in username",
+          "timestamp": 1741627379.540593,
+          "evidence": {
+            "request": {
+              "username": "<script>alert(1)</script>",
+              "email": "xss1741627375@example.com",
+              "password": "Test@123456"
+            },
+            "response": {
+              "status_code": 200,
+              "headers": {
+                "Server": "Werkzeug/2.2.3 Python/3.11.11",
+                "Date": "Mon, 10 Mar 2025 17:22:59 GMT",
+                "Content-Type": "application/json",
+                "Content-Length": "69",
+                "Connection": "close"
+              },
+              "body": "{ \"status\": \"fail\", \"message\": \"User already exists. Please Log in.\"}"
+            }
+          },
+          "remediation": "Implement proper input validation for all user registration fields.",
+          "finding_id": "6b5c8c87"
+        },
+        {
+          "vulnerability": "Unrestricted Account Creation - No Rate Limiting",
+          "severity": "MEDIUM",
+          "endpoint": "/users/v1/register",
+          "details": "The API does not implement rate limiting for account creation. Successfully created 5 accounts in rapid succession.",
+          "timestamp": 1741627380.601513,
+          "evidence": {
+            "successful_creations": 5,
+            "test_count": 5
+          },
+          "remediation": "Implement rate limiting for account creation to prevent abuse.",
+          "finding_id": "1e2c0503"
+        }
+      ],
+      "start_time": "2025-03-10T12:22:55.447543",
+      "end_time": "2025-03-10T12:23:02.703648"
+    },
+    {
+      "name": "broken_access_control",
+      "success": true,
+      "duration": 3.1534841060638428,
+      "findings": [
+        {
+          "vulnerability": "Privilege Escalation During Registration",
+          "severity": "HIGH",
+          "endpoint": "/users/v1/register",
+          "details": "Users can register accounts with administrative privileges by including the 'admin' field in the registration request.",
+          "timestamp": 1741627383.749791,
+          "evidence": {
+            "registration_payload": {
+              "username": "admin_user_1741627320_58ibz7",
+              "email": "admin_user_1741627320_58ibz7@example.com",
+              "password": "REDACTED",
+              "admin": true
+            },
+            "created_user": {
+              "admin": true,
+              "email": "admin_user_1741627320_58ibz7@example.com",
+              "password": "Admin@1741627320",
+              "username": "admin_user_1741627320_58ibz7"
+            }
+          },
+          "remediation": "Implement server-side validation to ignore or reject privilege-related fields in registration requests. Never trust client-provided values for privilege levels.",
+          "finding_id": "908d0af5"
+        }
+      ],
+      "start_time": "2025-03-10T12:23:02.704542",
+      "end_time": "2025-03-10T12:23:05.858026"
+    },
+    {
+      "name": "broken_authentication",
+      "success": true,
+      "duration": 0.022063016891479492,
+      "findings": [
+        {
+          "vulnerability": "Exposed Credentials via Debug Endpoint",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/_debug",
+          "details": "The API exposes user credentials via the debug endpoint (/users/v1/_debug). These credentials can be used to login and obtain valid authentication tokens.",
+          "timestamp": 1741627385.8744938,
+          "evidence": {
+            "debug_endpoint": "/users/v1/_debug",
+            "login_endpoint": "/users/v1/login",
+            "username": "name1",
+            "password_exposed": true,
+            "login_successful": true
+          },
+          "remediation": "Remove or properly secure the debug endpoint. Never expose user credentials in API responses. Implement proper authentication controls and ensure debug endpoints are not accessible in production environments.",
+          "finding_id": "3e277360"
+        }
+      ],
+      "start_time": "2025-03-10T12:23:05.858948",
+      "end_time": "2025-03-10T12:23:05.881011"
+    },
+    {
+      "name": "mass_assignment",
+      "success": true,
+      "duration": 11.920286893844604,
+      "findings": [
+        {
+          "vulnerability": "Mass Assignment During Registration",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/register",
+          "details": "The API allows setting admin privileges during user registration via mass assignment.",
+          "timestamp": 1741627397.802614,
+          "evidence": {
+            "request": {
+              "method": "POST",
+              "endpoint": "/users/v1/register",
+              "payload": {
+                "username": "test_mass_reg_1741627396",
+                "email": "test_mass_reg_1741627396@example.com",
+                "password": "Test@1741627396",
+                "admin": true
+              }
+            },
+            "response": {
+              "status_code": 200,
+              "body": "{\"message\": \"Successfully registered. Login to receive an auth token.\", \"status\": \"success\"}"
+            },
+            "verification": {
+              "user": "test_mass_reg_1741627396",
+              "admin_status": true
+            }
+          },
+          "remediation": "Implement proper server-side filtering of request parameters during registration to prevent setting of sensitive fields like 'admin'.",
+          "finding_id": "935b925c"
+        }
+      ],
+      "start_time": "2025-03-10T12:23:05.882883",
+      "end_time": "2025-03-10T12:23:17.803170"
+    },
+    {
+      "name": "regex_dos",
+      "success": true,
+      "duration": 87.07880783081055,
+      "findings": [
+        {
+          "vulnerability": "RegexDOS Scanner Error",
+          "severity": "INFO",
+          "endpoint": "N/A",
+          "details": "The RegexDOS scanner encountered an error: Request timed out: HTTPConnectionPool(host='localhost', port=5002): Read timed out. (read timeout=20). This may indicate an issue with the scanner configuration or the API.",
+          "timestamp": 1741627484.8837,
+          "evidence": {
+            "error": "Request timed out: HTTPConnectionPool(host='localhost', port=5002): Read timed out. (read timeout=20)",
+            "traceback": "Traceback (most recent call last):\n  File \"/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/urllib3/connectionpool.py\", line 534, in _make_request\n    response = conn.getresponse()\n  File \"/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/urllib3/connection.py\", line 516, in getresponse\n    httplib_response = super().getresponse()\n  File \"/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/http/client.py\", line 1430, in getresponse\n    response.begin()\n    ~~~~~~~~~~~~~~^^\n  File \"/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/http/client.py\", line 331, in begin\n    version, status, reason = self._read_status()\n                              ~~~~~~~~~~~~~~~~~^^\n  File \"/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/http/client.py\", line 292, in _read_status\n    line = str(self.fp.readline(_MAXLINE + 1), \"iso-8859-1\")\n               ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^\n  File \"/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/socket.py\", line 719, in readinto\n    return self._sock.recv_into(b)\n           ~~~~~~~~~~~~~~~~~~~~^^^\nTimeoutError: timed out\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/requests/adapters.py\", line 486, in send\n    resp = conn.urlopen(\n        method=request.method,\n    ...<9 lines>...\n        chunked=chunked,\n    )\n  File \"/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/urllib3/connectionpool.py\", line 841, in urlopen\n    retries = retries.increment(\n        method, url, error=new_e, _pool=self, _stacktrace=sys.exc_info()[2]\n    )\n  File \"/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/urllib3/util/retry.py\", line 474, in increment\n    raise reraise(type(error), error, _stacktrace)\n          ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/urllib3/util/util.py\", line 39, in reraise\n    raise value\n  File \"/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/urllib3/connectionpool.py\", line 787, in urlopen\n    response = self._make_request(\n        conn,\n    ...<10 lines>...\n        **response_kw,\n    )\n  File \"/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/urllib3/connectionpool.py\", line 536, in _make_request\n    self._raise_timeout(err=e, url=url, timeout_value=read_timeout)\n    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/urllib3/connectionpool.py\", line 367, in _raise_timeout\n    raise ReadTimeoutError(\n        self, url, f\"Read timed out. (read timeout={timeout_value})\"\n    ) from err\nurllib3.exceptions.ReadTimeoutError: HTTPConnectionPool(host='localhost', port=5002): Read timed out. (read timeout=20)\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/Users/rvance/Documents/scannerapi/core/base_scanner.py\", line 163, in _make_request\n    response = self.session.request(\n        method=method,\n    ...<7 lines>...\n        allow_redirects=allow_redirects\n    )\n  File \"/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/requests/sessions.py\", line 589, in request\n    resp = self.send(prep, **send_kwargs)\n  File \"/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/requests/sessions.py\", line 703, in send\n    r = adapter.send(request, **kwargs)\n  File \"/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/requests/adapters.py\", line 532, in send\n    raise ReadTimeout(e, request=request)\nrequests.exceptions.ReadTimeout: HTTPConnectionPool(host='localhost', port=5002): Read timed out. (read timeout=20)\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/Users/rvance/Documents/scannerapi/scanners/regex_dos.py\", line 434, in run\n    self._test_regex_dos(auth_token)\n    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^\n  File \"/Users/rvance/Documents/scannerapi/scanners/regex_dos.py\", line 245, in _test_regex_dos\n    response = self._make_request(\n        method=\"PUT\",\n    ...<4 lines>...\n        capture_for_evidence=True  # Capture request/response for evidence\n    )\n  File \"/Users/rvance/Documents/scannerapi/core/base_scanner.py\", line 239, in _make_request\n    raise ScannerTimeoutError(f\"Request timed out: {str(e)}\")\ncore.exceptions.ScannerTimeoutError: Request timed out: HTTPConnectionPool(host='localhost', port=5002): Read timed out. (read timeout=20)\n"
+          },
+          "remediation": "Check the scanner configuration and ensure the API is accessible.",
+          "finding_id": "ef26ebcd"
+        }
+      ],
+      "start_time": "2025-03-10T12:23:17.805402",
+      "end_time": "2025-03-10T12:24:44.884210"
+    }
+  ],
+  "metadata": {
+    "config_file": "config.yml",
+    "swagger_file": "swagger/openapi3.yml",
+    "openapi": {
+      "spec_path": "swagger/openapi3.yml",
+      "endpoint_count": 14,
+      "source": "openapi"
+    }
+  },
+  "summary": {
+    "total_scanners": 6,
+    "successful_scanners": 6,
+    "failed_scanners": 0,
+    "total_findings": 11
+  }
+}

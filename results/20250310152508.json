@@ -1,0 +1,354 @@
+{
+  "scan_id": "20250310152508",
+  "target": "http://localhost:5002",
+  "start_time": "2025-03-10T15:24:43.934400",
+  "end_time": "2025-03-10T15:25:08.309519",
+  "duration": 24.37511968612671,
+  "scanners": [
+    {
+      "name": "unauthorized_password_change",
+      "success": true,
+      "duration": 1.0838701725006104,
+      "findings": [
+        {
+          "vulnerability": "Unauthorized Password Change",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/name1/password",
+          "details": "The API allows users to change passwords of other users without proper authorization. User 'test_user_1741638283_re8xco' was able to change the password of user 'name1'.",
+          "timestamp": 1741638285.0996192,
+          "evidence": {
+            "test_user": "test_user_1741638283_re8xco",
+            "target_user": "name1",
+            "password_change_request": {
+              "endpoint": "/users/v1/name1/password",
+              "method": "PUT",
+              "headers": {
+                "Authorization": "Bearer eyJhbGciOi..."
+              },
+              "payload": {
+                "password": "NewPass@1741638283"
+              }
+            },
+            "verification": {
+              "login_successful": true,
+              "login_endpoint": "/users/v1/login",
+              "login_payload": {
+                "username": "name1",
+                "password": "NewPass@1741638283"
+              }
+            }
+          },
+          "remediation": "Implement proper authorization checks to ensure users can only change their own passwords. Verify the user's identity from the authentication token and compare it with the requested resource.",
+          "finding_id": "13eeaa95"
+        }
+      ],
+      "start_time": "2025-03-10T15:24:44.016193",
+      "end_time": "2025-03-10T15:24:45.100063"
+    },
+    {
+      "name": "unrestricted_account_creation",
+      "success": true,
+      "duration": 7.30466890335083,
+      "findings": [
+        {
+          "vulnerability": "Unrestricted Account Creation - Lack of Input Validation",
+          "severity": "HIGH",
+          "endpoint": "/users/v1/register",
+          "details": "The API allows account creation with invalid input: Empty username",
+          "timestamp": 1741638285.115467,
+          "evidence": {
+            "request": {
+              "username": "",
+              "email": "test@example.com",
+              "password": "Test@123456"
+            },
+            "response": {
+              "status_code": 200,
+              "headers": {
+                "Server": "Werkzeug/2.2.3 Python/3.11.11",
+                "Date": "Mon, 10 Mar 2025 20:24:45 GMT",
+                "Content-Type": "application/json",
+                "Content-Length": "69",
+                "Connection": "close"
+              },
+              "body": "{ \"status\": \"fail\", \"message\": \"User already exists. Please Log in.\"}"
+            }
+          },
+          "remediation": "Implement proper input validation for all user registration fields.",
+          "finding_id": "21fe1202"
+        },
+        {
+          "vulnerability": "Unrestricted Account Creation - Lack of Input Validation",
+          "severity": "HIGH",
+          "endpoint": "/users/v1/register",
+          "details": "The API allows account creation with invalid input: Invalid email format",
+          "timestamp": 1741638286.13839,
+          "evidence": {
+            "request": {
+              "username": "test_user_1741638285",
+              "email": "invalid-email",
+              "password": "Test@123456"
+            },
+            "response": {
+              "status_code": 200,
+              "headers": {
+                "Server": "Werkzeug/2.2.3 Python/3.11.11",
+                "Date": "Mon, 10 Mar 2025 20:24:46 GMT",
+                "Content-Type": "application/json",
+                "Content-Length": "69",
+                "Connection": "close"
+              },
+              "body": "{ \"status\": \"fail\", \"message\": \"User already exists. Please Log in.\"}"
+            }
+          },
+          "remediation": "Implement proper input validation for all user registration fields.",
+          "finding_id": "3beb4b04"
+        },
+        {
+          "vulnerability": "Unrestricted Account Creation - Lack of Input Validation",
+          "severity": "HIGH",
+          "endpoint": "/users/v1/register",
+          "details": "The API allows account creation with invalid input: Short password",
+          "timestamp": 1741638287.166525,
+          "evidence": {
+            "request": {
+              "username": "test_user_1741638285",
+              "email": "test1741638285@example.com",
+              "password": "short"
+            },
+            "response": {
+              "status_code": 200,
+              "headers": {
+                "Server": "Werkzeug/2.2.3 Python/3.11.11",
+                "Date": "Mon, 10 Mar 2025 20:24:47 GMT",
+                "Content-Type": "application/json",
+                "Content-Length": "69",
+                "Connection": "close"
+              },
+              "body": "{ \"status\": \"fail\", \"message\": \"User already exists. Please Log in.\"}"
+            }
+          },
+          "remediation": "Implement proper input validation for all user registration fields.",
+          "finding_id": "7c32f8b8"
+        },
+        {
+          "vulnerability": "Unrestricted Account Creation - Lack of Input Validation",
+          "severity": "HIGH",
+          "endpoint": "/users/v1/register",
+          "details": "The API allows account creation with invalid input: SQL injection in username",
+          "timestamp": 1741638288.186634,
+          "evidence": {
+            "request": {
+              "username": "' OR 1=1 --",
+              "email": "sqli1741638285@example.com",
+              "password": "Test@123456"
+            },
+            "response": {
+              "status_code": 200,
+              "headers": {
+                "Server": "Werkzeug/2.2.3 Python/3.11.11",
+                "Date": "Mon, 10 Mar 2025 20:24:48 GMT",
+                "Content-Type": "application/json",
+                "Content-Length": "69",
+                "Connection": "close"
+              },
+              "body": "{ \"status\": \"fail\", \"message\": \"User already exists. Please Log in.\"}"
+            }
+          },
+          "remediation": "Implement proper input validation for all user registration fields.",
+          "finding_id": "8f9b699e"
+        },
+        {
+          "vulnerability": "Unrestricted Account Creation - Lack of Input Validation",
+          "severity": "HIGH",
+          "endpoint": "/users/v1/register",
+          "details": "The API allows account creation with invalid input: XSS in username",
+          "timestamp": 1741638289.2142239,
+          "evidence": {
+            "request": {
+              "username": "<script>alert(1)</script>",
+              "email": "xss1741638285@example.com",
+              "password": "Test@123456"
+            },
+            "response": {
+              "status_code": 200,
+              "headers": {
+                "Server": "Werkzeug/2.2.3 Python/3.11.11",
+                "Date": "Mon, 10 Mar 2025 20:24:49 GMT",
+                "Content-Type": "application/json",
+                "Content-Length": "69",
+                "Connection": "close"
+              },
+              "body": "{ \"status\": \"fail\", \"message\": \"User already exists. Please Log in.\"}"
+            }
+          },
+          "remediation": "Implement proper input validation for all user registration fields.",
+          "finding_id": "a85652c2"
+        },
+        {
+          "vulnerability": "Unrestricted Account Creation - No Rate Limiting",
+          "severity": "MEDIUM",
+          "endpoint": "/users/v1/register",
+          "details": "The API does not implement rate limiting for account creation. Successfully created 5 accounts in rapid succession.",
+          "timestamp": 1741638290.295126,
+          "evidence": {
+            "successful_creations": 5,
+            "test_count": 5
+          },
+          "remediation": "Implement rate limiting for account creation to prevent abuse.",
+          "finding_id": "351d6d91"
+        }
+      ],
+      "start_time": "2025-03-10T15:24:45.100990",
+      "end_time": "2025-03-10T15:24:52.405659"
+    },
+    {
+      "name": "broken_access_control",
+      "success": true,
+      "duration": 3.1960158348083496,
+      "findings": [
+        {
+          "vulnerability": "Privilege Escalation During Registration",
+          "severity": "HIGH",
+          "endpoint": "/users/v1/register",
+          "details": "Users can register accounts with administrative privileges by including the 'admin' field in the registration request.",
+          "timestamp": 1741638293.484973,
+          "evidence": {
+            "registration_payload": {
+              "username": "admin_user_1741638284_386dfa",
+              "email": "admin_user_1741638284_386dfa@example.com",
+              "password": "REDACTED",
+              "admin": true
+            },
+            "created_user": {
+              "admin": true,
+              "email": "admin_user_1741638284_386dfa@example.com",
+              "password": "Admin@1741638284",
+              "username": "admin_user_1741638284_386dfa"
+            }
+          },
+          "remediation": "Implement server-side validation to ignore or reject privilege-related fields in registration requests. Never trust client-provided values for privilege levels.",
+          "finding_id": "f11f0dcc"
+        }
+      ],
+      "start_time": "2025-03-10T15:24:52.406851",
+      "end_time": "2025-03-10T15:24:55.602867"
+    },
+    {
+      "name": "broken_authentication",
+      "success": true,
+      "duration": 0.5863258838653564,
+      "findings": [
+        {
+          "vulnerability": "Exposed Credentials via Debug Endpoint",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/_debug",
+          "details": "The API exposes user credentials via the debug endpoint (/users/v1/_debug). These credentials can be used to login and obtain valid authentication tokens.",
+          "timestamp": 1741638295.6267788,
+          "evidence": {
+            "debug_endpoint": "/users/v1/_debug",
+            "login_endpoint": "/users/v1/login",
+            "username": "name1",
+            "password_exposed": true,
+            "login_successful": true
+          },
+          "remediation": "Remove or properly secure the debug endpoint. Never expose user credentials in API responses. Implement proper authentication controls and ensure debug endpoints are not accessible in production environments.",
+          "finding_id": "637a8fe0"
+        }
+      ],
+      "start_time": "2025-03-10T15:24:55.603608",
+      "end_time": "2025-03-10T15:24:56.189934"
+    },
+    {
+      "name": "jwt_vulnerabilities",
+      "success": true,
+      "duration": 0.1118929386138916,
+      "findings": [
+        {
+          "vulnerability": "Configured Long-Lived JWT Tokens",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/login",
+          "details": "The system is configured to issue JWT tokens with an extremely long lifetime of 355.0 days. This significantly increases the risk of token theft and misuse.",
+          "timestamp": 1741638296.191645,
+          "evidence": {
+            "configured_expiration_days": 355.0,
+            "recommended_maximum_days": 1
+          },
+          "remediation": "Configure shorter expiration times for JWT tokens (15-60 minutes is recommended). For longer sessions, implement refresh tokens with proper security controls.",
+          "finding_id": "26cdf479"
+        }
+      ],
+      "start_time": "2025-03-10T15:24:56.190776",
+      "end_time": "2025-03-10T15:24:56.302669"
+    },
+    {
+      "name": "mass_assignment",
+      "success": true,
+      "duration": 12.002933979034424,
+      "findings": [
+        {
+          "vulnerability": "Mass Assignment During Registration",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/register",
+          "details": "The API allows setting admin privileges during user registration via mass assignment.",
+          "timestamp": 1741638308.3068879,
+          "evidence": {
+            "request": {
+              "method": "POST",
+              "endpoint": "/users/v1/register",
+              "payload": {
+                "username": "test_mass_reg_1741638307",
+                "email": "test_mass_reg_1741638307@example.com",
+                "password": "Test@1741638307",
+                "admin": true
+              }
+            },
+            "response": {
+              "status_code": 200,
+              "body": "{\"message\": \"Successfully registered. Login to receive an auth token.\", \"status\": \"success\"}"
+            },
+            "verification": {
+              "user": "test_mass_reg_1741638307",
+              "admin_status": true
+            }
+          },
+          "remediation": "Implement proper server-side filtering of request parameters during registration to prevent setting of sensitive fields like 'admin'.",
+          "finding_id": "3ed12287"
+        }
+      ],
+      "start_time": "2025-03-10T15:24:56.304546",
+      "end_time": "2025-03-10T15:25:08.307480"
+    },
+    {
+      "name": "regex_dos",
+      "success": true,
+      "duration": 0,
+      "findings": [
+        {
+          "vulnerability": "RegexDOS Scanner Skipped",
+          "severity": "INFO",
+          "endpoint": "N/A",
+          "details": "The RegexDOS scanner was skipped due to the --dos flag being set to false.",
+          "remediation": "To run the RegexDOS scanner, use the --dos true flag."
+        }
+      ],
+      "start_time": "2025-03-10T15:25:08.309492",
+      "end_time": "2025-03-10T15:25:08.309496"
+    }
+  ],
+  "metadata": {
+    "config_file": "config.yml",
+    "swagger_file": "swagger/openapi3.yml",
+    "openapi": {
+      "spec_path": "swagger/openapi3.yml",
+      "endpoint_count": 14,
+      "source": "openapi"
+    }
+  },
+  "summary": {
+    "total_scanners": 7,
+    "successful_scanners": 7,
+    "failed_scanners": 0,
+    "total_findings": 12
+  }
+}

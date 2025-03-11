@@ -1,0 +1,67 @@
+{
+  "scan_id": "20250310181313",
+  "target": "http://localhost:5002",
+  "start_time": "2025-03-10T18:13:13.151114",
+  "end_time": "2025-03-10T18:13:13.215900",
+  "duration": 0.06478691101074219,
+  "scanners": [
+    {
+      "name": "excessive_data_exposure",
+      "success": true,
+      "duration": 0.034323930740356445,
+      "findings": [
+        {
+          "vulnerability": "Excessive Data Exposure - Debug Endpoint",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/_debug",
+          "details": "The API exposes a debug endpoint that returns sensitive user data including admin, password. This endpoint returned data for 486 users, which could lead to unauthorized access to sensitive information.",
+          "timestamp": 1741648393.202444,
+          "evidence": {
+            "sensitive_fields": [
+              "admin",
+              "password"
+            ],
+            "total_users_exposed": 486,
+            "status_code": 200,
+            "evidence_file": "/Users/rvance/Documents/scannerapi/results/results_20250310181313.json"
+          },
+          "remediation": "Remove or properly secure debug endpoints in production environments. Implement proper authentication and authorization controls. Consider implementing a separate API for debugging that requires elevated privileges.",
+          "finding_id": "2842d645"
+        }
+      ],
+      "start_time": "2025-03-10T18:13:13.181423",
+      "end_time": "2025-03-10T18:13:13.215747"
+    },
+    {
+      "name": "regex_dos",
+      "success": true,
+      "duration": 0,
+      "findings": [
+        {
+          "vulnerability": "RegexDOS Scanner Skipped",
+          "severity": "INFO",
+          "endpoint": "N/A",
+          "details": "The RegexDOS scanner was skipped due to the --dos flag being set to false.",
+          "remediation": "To run the RegexDOS scanner, use the --dos true flag."
+        }
+      ],
+      "start_time": "2025-03-10T18:13:13.215886",
+      "end_time": "2025-03-10T18:13:13.215888"
+    }
+  ],
+  "metadata": {
+    "config_file": "tests/sample_config.json",
+    "swagger_file": "tests/sample_openapi.yaml",
+    "openapi": {
+      "spec_path": "tests/sample_openapi.yaml",
+      "endpoint_count": 14,
+      "source": "openapi"
+    }
+  },
+  "summary": {
+    "total_scanners": 2,
+    "successful_scanners": 2,
+    "failed_scanners": 0,
+    "total_findings": 2
+  }
+}
