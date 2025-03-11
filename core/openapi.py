@@ -254,7 +254,11 @@ def extract_endpoints(spec: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def find_endpoint_by_purpose(endpoints: List[Dict[str, Any]], purpose: str, default_path: str = None) -> str:
     """
-    Find an endpoint path that matches a specific purpose.
+    Find an endpoint path that matches a specific purpose using intelligent matching.
+    
+    This function uses a combination of path patterns, operation IDs, descriptions,
+    tags, and summaries to identify endpoints that match a specific purpose.
+    It applies a scoring system to rank potential matches.
     
     Args:
         endpoints: List of endpoint dictionaries from extract_endpoints
@@ -264,42 +268,71 @@ def find_endpoint_by_purpose(endpoints: List[Dict[str, Any]], purpose: str, defa
     Returns:
         Endpoint path that best matches the purpose, or default_path if not found
     """
-    # Define mapping of purposes to path patterns and operation IDs
+    # Define mapping of purposes to patterns, keywords, and related concepts
     purpose_mapping = {
         "register": {
-            "path_patterns": ["/register", "/signup", "/users/register", "/users/v1/register", "/api/users/register"],
-            "operation_ids": ["register", "registerUser", "createUser", "signup", "userRegistration"],
-            "methods": ["POST"]
+            "path_patterns": ["/register", "/signup", "/sign-up", "/users/register", "/users/v1/register", "/api/users/register", "/auth/register", "/auth/sign-up", "/auth/signup", "/account/create", "/account/new", "/account/register", "/account/signup"],
+            "operation_ids": ["register", "registerUser", "createUser", "signup", "signUp", "userRegistration", "createAccount", "newUser", "addUser"],
+            "methods": ["POST"],
+            "tags": ["user", "users", "auth", "authentication", "account", "accounts", "registration"],
+            "description_keywords": ["register", "signup", "sign up", "sign-up", "create account", "new user", "new account", "registration", "onboarding", "join", "enroll"],
+            "related_purposes": ["create_user"]
         },
         "login": {
-            "path_patterns": ["/login", "/signin", "/users/login", "/users/v1/login", "/api/users/login", "/auth/login"],
-            "operation_ids": ["login", "loginUser", "signin", "userLogin", "authenticate"],
-            "methods": ["POST"]
+            "path_patterns": ["/login", "/signin", "/sign-in", "/users/login", "/users/v1/login", "/api/users/login", "/auth/login", "/auth/signin", "/auth/sign-in", "/account/login", "/account/signin"],
+            "operation_ids": ["login", "loginUser", "signin", "signIn", "userLogin", "authenticate", "auth", "getToken", "getAccessToken"],
+            "methods": ["POST"],
+            "tags": ["user", "users", "auth", "authentication", "account", "accounts", "login"],
+            "description_keywords": ["login", "log in", "signin", "sign in", "sign-in", "authenticate", "authentication", "access token", "session", "credentials"],
+            "related_purposes": ["authenticate"]
         },
         "debug": {
-            "path_patterns": ["/_debug", "/debug", "/users/_debug", "/users/v1/_debug", "/api/users/debug"],
-            "operation_ids": ["debug", "getDebugInfo", "getUsersDebug"],
-            "methods": ["GET"]
+            "path_patterns": ["/_debug", "/debug", "/users/_debug", "/users/v1/_debug", "/api/users/debug", "/system/debug", "/dev", "/development", "/test", "/internal"],
+            "operation_ids": ["debug", "getDebugInfo", "getUsersDebug", "testEndpoint", "devTools", "systemCheck", "diagnostics", "validate"],
+            "methods": ["GET", "POST"],
+            "tags": ["debug", "development", "test", "internal", "system", "diagnostics"],
+            "description_keywords": ["debug", "test", "development", "internal", "diagnostics", "validate", "check", "verification", "system status"],
+            "related_purposes": ["test", "validate"]
         },
         "create_user": {
-            "path_patterns": ["/users", "/api/users", "/users/v1"],
-            "operation_ids": ["createUser", "addUser", "postUser"],
-            "methods": ["POST"]
+            "path_patterns": ["/users", "/api/users", "/users/v1", "/accounts", "/api/accounts", "/admin/users", "/admin/accounts"],
+            "operation_ids": ["createUser", "addUser", "postUser", "newUser", "createAccount", "addAccount"],
+            "methods": ["POST"],
+            "tags": ["user", "users", "account", "accounts", "admin"],
+            "description_keywords": ["create user", "add user", "new user", "user creation", "account creation", "add account"],
+            "related_purposes": ["register"]
         },
         "update_user": {
-            "path_patterns": ["/users/{id}", "/api/users/{id}", "/users/v1/{id}", "/users/{username}", "/users/v1/{username}"],
-            "operation_ids": ["updateUser", "putUser", "patchUser"],
-            "methods": ["PUT", "PATCH"]
+            "path_patterns": ["/users/{id}", "/api/users/{id}", "/users/v1/{id}", "/users/{username}", "/users/v1/{username}", "/accounts/{id}", "/users/me", "/accounts/me", "/profile", "/user/profile"],
+            "operation_ids": ["updateUser", "putUser", "patchUser", "modifyUser", "editUser", "updateAccount", "updateProfile", "editProfile"],
+            "methods": ["PUT", "PATCH"],
+            "tags": ["user", "users", "account", "accounts", "profile"],
+            "description_keywords": ["update user", "edit user", "modify user", "change user", "update account", "edit account", "update profile", "edit profile"],
+            "related_purposes": ["edit_profile"]
         },
         "get_user": {
-            "path_patterns": ["/users/{id}", "/api/users/{id}", "/users/v1/{id}", "/users/{username}", "/users/v1/{username}"],
-            "operation_ids": ["getUser", "getUserById", "getUserByUsername"],
-            "methods": ["GET"]
+            "path_patterns": ["/users/{id}", "/api/users/{id}", "/users/v1/{id}", "/users/{username}", "/users/v1/{username}", "/accounts/{id}", "/users/me", "/accounts/me", "/profile", "/user/profile"],
+            "operation_ids": ["getUser", "getUserById", "getUserByUsername", "fetchUser", "retrieveUser", "getAccount", "getProfile", "fetchProfile", "retrieveProfile"],
+            "methods": ["GET"],
+            "tags": ["user", "users", "account", "accounts", "profile"],
+            "description_keywords": ["get user", "fetch user", "retrieve user", "user details", "user info", "user information", "get account", "account details", "profile info", "profile details"],
+            "related_purposes": ["view_profile"]
         },
         "password_change": {
-            "path_patterns": ["/users/{id}/password", "/users/v1/{id}/password", "/users/{username}/password", "/users/v1/{username}/password", "/password", "/change-password"],
-            "operation_ids": ["changePassword", "updatePassword", "resetPassword"],
-            "methods": ["PUT", "PATCH", "POST"]
+            "path_patterns": ["/users/{id}/password", "/users/v1/{id}/password", "/users/{username}/password", "/users/v1/{username}/password", "/password", "/change-password", "/reset-password", "/auth/password", "/account/password", "/users/me/password"],
+            "operation_ids": ["changePassword", "updatePassword", "resetPassword", "modifyPassword", "newPassword", "passwordReset", "passwordUpdate"],
+            "methods": ["PUT", "PATCH", "POST"],
+            "tags": ["user", "users", "auth", "authentication", "account", "accounts", "password", "security"],
+            "description_keywords": ["change password", "update password", "reset password", "modify password", "new password", "password reset", "password change", "password update"],
+            "related_purposes": ["reset_password"]
+        },
+        "validate": {
+            "path_patterns": ["/validate", "/check", "/verify", "/auth/check", "/auth/validate", "/auth/verify", "/token/validate", "/token/verify", "/session/validate", "/session/check"],
+            "operation_ids": ["validate", "check", "verify", "validateToken", "checkToken", "verifyToken", "validateSession", "checkSession", "verifySession"],
+            "methods": ["GET", "POST"],
+            "tags": ["auth", "authentication", "token", "session", "validation", "verification"],
+            "description_keywords": ["validate", "check", "verify", "validation", "verification", "token validation", "session check", "auth check", "authentication verification"],
+            "related_purposes": ["check_auth", "verify_token"]
         }
     }
     
@@ -309,25 +342,116 @@ def find_endpoint_by_purpose(endpoints: List[Dict[str, Any]], purpose: str, defa
         return default_path
     
     purpose_info = purpose_mapping[purpose]
-    path_patterns = purpose_info["path_patterns"]
-    operation_ids = purpose_info["operation_ids"]
-    methods = purpose_info["methods"]
     
-    # First, try to match by operation ID (most specific)
+    # Initialize scores for each endpoint
+    endpoint_scores = {}
+    
+    # Analyze each endpoint and calculate a matching score
     for endpoint in endpoints:
-        if endpoint["method"] in methods and any(op_id.lower() in endpoint["operation_id"].lower() for op_id in operation_ids):
-            logger.info(f"Found {purpose} endpoint by operation ID: {endpoint['path']}")
-            return endpoint["path"]
+        score = 0
+        reasons = []
+        
+        # Method matching (high importance)
+        if endpoint["method"] in purpose_info["methods"]:
+            score += 20
+            reasons.append("method_match")
+        else:
+            # If method doesn't match, this is likely not the right endpoint
+            continue
+        
+        # Operation ID matching (highest importance)
+        if endpoint["operation_id"]:
+            for op_id in purpose_info["operation_ids"]:
+                if op_id.lower() in endpoint["operation_id"].lower():
+                    score += 40
+                    reasons.append(f"operation_id_contains_{op_id}")
+                    break
+        
+        # Path pattern matching (high importance)
+        for pattern in purpose_info["path_patterns"]:
+            if pattern.lower() in endpoint["path"].lower():
+                score += 30
+                reasons.append(f"path_contains_{pattern}")
+                break
+        
+        # Tag matching (medium importance)
+        if "tags" in endpoint and endpoint["tags"]:
+            for tag in endpoint["tags"]:
+                if tag.lower() in purpose_info["tags"]:
+                    score += 15
+                    reasons.append(f"tag_match_{tag}")
+                    break
+        
+        # Description and summary keyword matching (medium importance)
+        for field in ["description", "summary"]:
+            if field in endpoint and endpoint[field]:
+                for keyword in purpose_info["description_keywords"]:
+                    if keyword.lower() in endpoint[field].lower():
+                        score += 15
+                        reasons.append(f"{field}_contains_{keyword}")
+                        break
+        
+        # Check for path parameters that might indicate a specific resource (like user ID)
+        if "{" in endpoint["path"] and "}" in endpoint["path"]:
+            if purpose in ["get_user", "update_user"]:
+                score += 10
+                reasons.append("path_parameter")
+        
+        # Special case for paths containing 'user' or 'account'
+        if purpose in ["get_user", "update_user", "create_user", "register"]:
+            if "user" in endpoint["path"].lower() or "account" in endpoint["path"].lower():
+                score += 10
+                reasons.append("path_contains_user")
+        
+        # Special case for paths containing 'view' or 'get'
+        if purpose == "get_user" and ("view" in endpoint["path"].lower() or "get" in endpoint["description"].lower()):
+            score += 10
+            reasons.append("path_contains_view,description_contains_get")
+        
+        # Special case for paths containing 'query' or 'search'
+        if ("query" in endpoint["path"].lower() or "search" in endpoint["path"].lower() or 
+           ("description" in endpoint and ("query" in endpoint["description"].lower() or "search" in endpoint["description"].lower()))):
+            score += 10
+            reasons.append("description_contains_query")
+        
+        # Special case for record-related endpoints
+        if "record" in endpoint["path"].lower() or ("description" in endpoint and "record" in endpoint["description"].lower()):
+            score += 5
+            reasons.append("description_contains_record")
+        
+        # Store the score and reasons if above threshold
+        if score > 0:
+            endpoint_scores[endpoint["path"]] = {
+                "score": score,
+                "reasons": reasons,
+                "method": endpoint["method"],
+                "endpoint": endpoint
+            }
     
-    # Next, try to match by path pattern
-    for endpoint in endpoints:
-        if endpoint["method"] in methods:
-            for pattern in path_patterns:
-                if pattern.lower() in endpoint["path"].lower():
-                    logger.info(f"Found {purpose} endpoint by path pattern: {endpoint['path']}")
-                    return endpoint["path"]
+    # Find the endpoint with the highest score
+    if endpoint_scores:
+        # Sort by score (descending)
+        sorted_endpoints = sorted(endpoint_scores.items(), key=lambda x: x[1]["score"], reverse=True)
+        best_match = sorted_endpoints[0]
+        best_path = best_match[0]
+        best_score = best_match[1]["score"]
+        best_reasons = ",".join(best_match[1]["reasons"])
+        
+        # Log the match details
+        logger.info(f"Found {purpose} endpoint: {best_path} (Score: {best_score}, Reasons: {best_reasons})")
+        return best_path
     
-    # If no match found, return the default path
+    # If no match found with sufficient score, check related purposes
+    if "related_purposes" in purpose_info:
+        for related_purpose in purpose_info["related_purposes"]:
+            if related_purpose in purpose_mapping:
+                # Try to find a match using the related purpose
+                related_path = find_endpoint_by_purpose(endpoints, related_purpose, None)
+                if related_path:
+                    logger.info(f"Found {purpose} endpoint via related purpose {related_purpose}: {related_path}")
+                    return related_path
+    
+    # If still no match found, return the default path
     logger.warning(f"No matching endpoint found for purpose: {purpose}, using default path: {default_path}")
     return default_path
 

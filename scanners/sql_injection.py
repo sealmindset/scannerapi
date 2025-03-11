@@ -37,6 +37,20 @@ class Scanner(BaseScanner):
         self.endpoints = config.get("endpoints", [])
         self.test_delay = config.get("test_delay", 1.0)
         
+        # Get fallback endpoints configuration
+        self.fallback_endpoints = config.get("fallback_endpoints", [
+            "/users/v1/{username}",  # Known vulnerable endpoint
+            "/users/v1/search",
+            "/products/search",
+            "/api/search",
+            "/api/query",
+            "/api/users/{id}",
+            "/api/products/{id}"
+        ])
+        
+        # Track endpoint sources for logging
+        self.endpoint_sources = {}
+        
         # SQL injection payloads
         self.payloads = config.get("payloads", [
             "'",  # Simple single quote (most basic test)
@@ -81,28 +95,20 @@ class Scanner(BaseScanner):
         ])
         
         # Extract endpoints from OpenAPI spec if available
-        self._extract_endpoints_from_openapi(target)
+        openapi_endpoints = self._extract_endpoints_from_openapi(target)
         
-        # If no endpoints are configured, use some common ones
+        # If no endpoints were found in OpenAPI spec, use the fallback endpoints
         if not self.endpoints:
-            self.endpoints = [
-                "/users/v1/{username}",  # Known vulnerable endpoint
-                "/users/v1/search",
-                "/products/search",
-                "/api/search",
-                "/api/query",
-                "/api/users/{id}",
-                "/api/products/{id}"
-            ]
-            
-        # Ensure the known vulnerable endpoint is always included
-        if "/users/v1/{username}" not in self.endpoints:
-            self.endpoints.append("/users/v1/{username}")
+            self.logger.info(f"No endpoints found in OpenAPI specification, using {len(self.fallback_endpoints)} fallback endpoints")
+            for endpoint in self.fallback_endpoints:
+                self.endpoints.append(endpoint)
+                self.endpoint_sources[endpoint] = "fallback"
         
-        # Log the resolved endpoints
+        # Log the resolved endpoints with their sources
         self.logger.info(f"Testing {len(self.endpoints)} endpoints for SQL injection")
         for endpoint in self.endpoints:
-            self.logger.info(f"Endpoint: {endpoint}")
+            source = self.endpoint_sources.get(endpoint, "unknown")
+            self.logger.info(f"Endpoint: {endpoint} (Source: {source})")
         
         # Debug and simulation mode
         self.debug = config.get("debug", False)
@@ -113,65 +119,117 @@ class Scanner(BaseScanner):
             if self.simulate_vulnerabilities:
                 self.logger.info("Simulation mode enabled - simulating vulnerabilities")
     
-    def _extract_endpoints_from_openapi(self, target: Dict[str, Any]) -> None:
+    def _extract_endpoints_from_openapi(self, target: Dict[str, Any]) -> List[str]:
         """
         Extract API endpoints from OpenAPI specification.
         
         Args:
             target: Target configuration containing OpenAPI data
+            
+        Returns:
+            List of extracted endpoints
         """
+        extracted_endpoints = []
+        
         # Check if OpenAPI data is available in the target configuration
         if "openapi" not in target or not isinstance(target["openapi"], dict):
             self.logger.info("No OpenAPI data available for endpoint extraction")
-            return
+            return extracted_endpoints
         
         openapi_data = target["openapi"]
         
         # Extract endpoints from the OpenAPI specification
         if "endpoints" not in openapi_data or not isinstance(openapi_data["endpoints"], list):
             self.logger.info("No endpoints found in OpenAPI specification data")
-            return
+            return extracted_endpoints
         
         endpoints = openapi_data["endpoints"]
         self.logger.info(f"Found {len(endpoints)} endpoints in OpenAPI specification")
         
         # Try to find specific endpoints by purpose using the utility function
-        user_endpoint = find_endpoint_by_purpose(endpoints, "user_detail", "/users/v1/{username}")
+        # First, try to find user detail endpoints (using get_user purpose which is defined in the mapping)
+        user_endpoint = find_endpoint_by_purpose(endpoints, "get_user", None)
         if user_endpoint:
-            self.logger.info(f"Found user detail endpoint: {user_endpoint}")
+            self.logger.info(f"Found user detail endpoint by purpose 'get_user': {user_endpoint}")
             if user_endpoint not in self.endpoints:
                 self.endpoints.append(user_endpoint)
+                self.endpoint_sources[user_endpoint] = "openapi:get_user"
+                extracted_endpoints.append(user_endpoint)
         
-        search_endpoint = find_endpoint_by_purpose(endpoints, "search", "/api/search")
-        if search_endpoint:
-            self.logger.info(f"Found search endpoint: {search_endpoint}")
-            if search_endpoint not in self.endpoints:
-                self.endpoints.append(search_endpoint)
-        
-        # Extract all GET endpoints with path parameters
-        extracted_endpoints = []
+        # Try to find user endpoints with path parameters
+        user_endpoints_found = False
         for endpoint in endpoints:
             path = endpoint.get("path", "")
             method = endpoint.get("method", "").upper()
-            
-            # Focus on endpoints that are likely to have database queries
-            if method in ["GET", "POST"] and (
-                "{" in path or  # Path parameter
-                "search" in path.lower() or
-                "query" in path.lower() or
-                "filter" in path.lower() or
-                "user" in path.lower() or
-                "product" in path.lower() or
-                "item" in path.lower() or
-                "order" in path.lower() or
-                "find" in path.lower()
-            ):
-                if path not in self.endpoints and path not in extracted_endpoints:
-                    extracted_endpoints.append(path)
+            if method == "GET" and "{" in path and any(user_term in path.lower() for user_term in ["/user/", "/users/"]):
+                # Skip if we already added this endpoint via get_user purpose
+                if path in self.endpoints:
+                    user_endpoints_found = True
+                    continue
+                    
+                self.logger.info(f"Found user detail endpoint by pattern matching: {path}")
+                self.endpoints.append(path)
+                self.endpoint_sources[path] = "openapi:user_path_pattern"
+                extracted_endpoints.append(path)
+                user_endpoints_found = True
         
-        if extracted_endpoints:
-            self.endpoints.extend(extracted_endpoints)
-            self.logger.info(f"Extracted {len(extracted_endpoints)} additional endpoints for SQL injection testing")
+        # Only log a warning if we didn't find any user detail endpoints
+        if not user_endpoints_found and not any("get_user" in source for source in self.endpoint_sources.values()):
+            self.logger.warning("No user detail endpoints found in OpenAPI specification")
+        
+        # Extract all endpoints with path parameters or database-related functionality
+        for endpoint in endpoints:
+            path = endpoint.get("path", "")
+            method = endpoint.get("method", "").upper()
+            operation_id = endpoint.get("operation_id", "").lower() if endpoint.get("operation_id") else ""
+            description = endpoint.get("description", "").lower() if endpoint.get("description") else ""
+            summary = endpoint.get("summary", "").lower() if endpoint.get("summary") else ""
+            
+            # Skip endpoints we've already added
+            if path in self.endpoints:
+                continue
+                
+            # Determine if this endpoint is likely to involve database queries
+            is_database_related = False
+            reason = []
+            
+            # Check for path parameters (likely database lookups)
+            if "{" in path:
+                is_database_related = True
+                reason.append("path_parameter")
+            
+            # Check path for database-related keywords
+            db_path_keywords = ["search", "query", "filter", "user", "product", "item", "order", "find", "get", "detail", "view", "record"]
+            for keyword in db_path_keywords:
+                if keyword in path.lower():
+                    is_database_related = True
+                    reason.append(f"path_contains_{keyword}")
+                    break
+            
+            # Check operation ID for database-related keywords
+            db_op_keywords = ["search", "query", "filter", "get", "find", "retrieve", "list", "view", "read", "fetch"]
+            for keyword in db_op_keywords:
+                if operation_id and keyword in operation_id:
+                    is_database_related = True
+                    reason.append(f"operation_id_contains_{keyword}")
+                    break
+            
+            # Check description and summary for database-related terms
+            db_desc_keywords = ["database", "query", "record", "retrieve", "fetch", "get", "search"]
+            for keyword in db_desc_keywords:
+                if (description and keyword in description) or (summary and keyword in summary):
+                    is_database_related = True
+                    reason.append(f"description_contains_{keyword}")
+                    break
+            
+            # Only add endpoints that are likely to involve database queries
+            if is_database_related and method in ["GET", "POST"]:
+                self.endpoints.append(path)
+                self.endpoint_sources[path] = f"openapi:{','.join(reason)}"
+                extracted_endpoints.append(path)
+                self.logger.info(f"Added endpoint: {path} (Reason: {self.endpoint_sources[path]})")
+        
+        return extracted_endpoints
     
     def _test_endpoint_for_sqli(self, endpoint: str) -> Optional[Dict[str, Any]]:
         """
@@ -444,15 +502,62 @@ class Scanner(BaseScanner):
     def _test_known_vulnerable_endpoint(self) -> Optional[Dict[str, Any]]:
         """
         Directly test the known vulnerable endpoint with a simple single quote.
-        This is a targeted test based on the known vulnerability in the /users/v1/{username} endpoint.
+        This is a targeted test based on the known vulnerability in user detail endpoints.
         
         Returns:
             Evidence of vulnerability if found, None otherwise
         """
-        self.logger.info("Testing known vulnerable endpoint /users/v1/{username} with simple single quote")
+        # Find a user detail endpoint to test
+        user_endpoints = []
+        for endpoint in self.endpoints:
+            if "{" in endpoint and any(pattern in endpoint.lower() for pattern in ["/user", "/users", "username", "userid", "user_id"]):
+                user_endpoints.append(endpoint)
         
-        # Test the endpoint with a simple single quote
-        test_endpoint = "/users/v1/name1'"
+        if not user_endpoints:
+            self.logger.warning("No user detail endpoints found for targeted SQL injection testing")
+            return None
+        
+        # Test each user endpoint
+        for endpoint in user_endpoints:
+            source = self.endpoint_sources.get(endpoint, "unknown")
+            self.logger.info(f"Testing user detail endpoint {endpoint} (Source: {source}) with simple single quote")
+            
+            # Extract the parameter name
+            param_match = re.search(r"\{([^}]+)\}", endpoint)
+            if not param_match:
+                continue
+                
+            param_name = param_match.group(1)
+            
+            # Test the endpoint with a simple single quote
+            test_endpoint = endpoint.replace(f"{{{param_name}}}", f"name1'")
+            
+            # Make sure we're not using a hardcoded path
+            self.logger.info(f"Converted template {endpoint} to actual test path: {test_endpoint}")
+            
+            try:
+                # Make the request
+                response = self._make_request(test_endpoint)
+                
+                # Check for SQL error patterns in the response
+                if response and self._check_for_sql_error(response):
+                    self.logger.info(f"Found SQL injection vulnerability in {endpoint}")
+                    
+                    # Return evidence of the vulnerability
+                    return {
+                        "endpoint": endpoint,
+                        "vulnerable_parameter": param_name,
+                        "payload": "'",
+                        "injection_point": "path",
+                        "response": {
+                            "status_code": response.status_code,
+                            "body": response.text[:500]  # Truncate long responses
+                        }
+                    }
+            except Exception as e:
+                self.logger.warning(f"Error testing endpoint {test_endpoint}: {str(e)}")
+                
+        return None
         
         try:
             # Make the request
@@ -531,16 +636,44 @@ class Scanner(BaseScanner):
             List of findings
         """
         self.logger.info("Starting SQL injection scanner")
+        self.logger.info(f"Testing {len(self.endpoints)} endpoints for SQL injection vulnerabilities")
+        
+        # Log endpoint sources summary
+        source_counts = {}
+        for endpoint, source in self.endpoint_sources.items():
+            source_type = source.split(":")[0] if ":" in source else source
+            source_counts[source_type] = source_counts.get(source_type, 0) + 1
+        
+        for source_type, count in source_counts.items():
+            self.logger.info(f"Endpoint source: {source_type} - {count} endpoints")
+            
+        # Log if we're using only OpenAPI endpoints or fallbacks
+        if self.endpoint_sources:
+            if all(source.startswith("openapi:") for source in self.endpoint_sources.values()):
+                self.logger.info("Using only endpoints from OpenAPI specification")
+            elif any(source == "fallback" for source in self.endpoint_sources.values()):
+                self.logger.info("Using some fallback endpoints because OpenAPI specification was incomplete")
+            else:
+                self.logger.info("No OpenAPI specification found, using fallback endpoints")
+        else:
+            self.logger.info("No endpoint sources tracked, using default endpoints")
         
         # If in simulation mode, add simulated findings directly
         if self.simulate_vulnerabilities:
             self.logger.info("Simulating SQL injection vulnerabilities")
             
+            # Find a user endpoint for the simulation
+            user_endpoint = "/users/v1/{username}"  # Default
+            for endpoint in self.endpoints:
+                if "{" in endpoint and any(pattern in endpoint.lower() for pattern in ["/user", "/users"]):
+                    user_endpoint = endpoint
+                    break
+            
             # Simulate a SQL injection vulnerability in path parameter
             self.add_finding(
                 vulnerability="SQL Injection - Error Based",
                 severity="CRITICAL",
-                endpoint="/users/v1/{username}",
+                endpoint=user_endpoint,
                 details="The API endpoint is vulnerable to SQL injection attacks. An attacker can inject malicious SQL code into the username parameter, potentially gaining unauthorized access to the database.",
                 evidence={
                     "vulnerable_parameter": "username",
@@ -554,11 +687,18 @@ class Scanner(BaseScanner):
                 remediation="Use parameterized queries or prepared statements instead of building SQL queries through string concatenation. Implement proper input validation and sanitization for all user inputs."
             )
             
+            # Find a search endpoint for the simulation
+            search_endpoint = "/api/products/search"  # Default
+            for endpoint in self.endpoints:
+                if "search" in endpoint.lower():
+                    search_endpoint = endpoint
+                    break
+            
             # Simulate a time-based SQL injection vulnerability
             self.add_finding(
                 vulnerability="SQL Injection - Time Based",
                 severity="CRITICAL",
-                endpoint="/api/products/search",
+                endpoint=search_endpoint,
                 details="The API endpoint is vulnerable to time-based SQL injection attacks. An attacker can inject SQL code that causes time delays in the database response, which can be used to extract data.",
                 evidence={
                     "vulnerable_parameter": "q",
@@ -574,20 +714,26 @@ class Scanner(BaseScanner):
         # First, test the known vulnerable endpoint directly
         known_evidence = self._test_known_vulnerable_endpoint()
         if known_evidence:
+            vulnerable_param = known_evidence.get("vulnerable_parameter", "parameter")
             self.add_finding(
                 vulnerability="SQL Injection - Error Based",
                 severity="CRITICAL",
                 endpoint=known_evidence["endpoint"],
-                details=f"The API endpoint is vulnerable to SQL injection attacks. A simple single quote in the username parameter causes a SQL error, indicating that user input is not properly sanitized before being used in database queries.",
+                details=f"The API endpoint is vulnerable to SQL injection attacks. A simple single quote in the {vulnerable_param} parameter causes a SQL error, indicating that user input is not properly sanitized before being used in database queries.",
                 evidence=known_evidence,
                 remediation="Use parameterized queries or prepared statements instead of building SQL queries through string concatenation. Implement proper input validation and sanitization for all user inputs."
             )
         
         # Test each endpoint for SQL injection vulnerabilities
         for endpoint in self.endpoints:
-            # Skip the known vulnerable endpoint if we already tested it
-            if known_evidence and endpoint == "/users/v1/{username}":
+            # Skip endpoints we've already found vulnerabilities in
+            if known_evidence and endpoint == known_evidence.get("endpoint"):
+                self.logger.info(f"Skipping {endpoint} as vulnerability was already found")
                 continue
+                
+            # Log the source of this endpoint
+            source = self.endpoint_sources.get(endpoint, "unknown")
+            self.logger.info(f"Testing endpoint: {endpoint} (Source: {source})")
                 
             # Test for error-based SQL injection
             evidence = self._test_endpoint_for_sqli(endpoint)
