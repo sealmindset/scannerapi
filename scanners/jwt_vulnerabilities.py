@@ -155,11 +155,67 @@ class Scanner(BaseScanner):
         self.logger.info(f"Found {len(endpoints)} endpoints in OpenAPI specification")
         
         # Use the utility function to find endpoints by purpose
+        # For each endpoint, use the enhanced find_endpoint_by_purpose function
+        # which now has improved scoring and pattern matching capabilities
         self.login_endpoint = find_endpoint_by_purpose(endpoints, "login", self.login_endpoint)
-        self.refresh_token_endpoint = find_endpoint_by_purpose(endpoints, "refresh", self.refresh_token_endpoint)
+        self.refresh_token_endpoint = find_endpoint_by_purpose(endpoints, "refresh_token", self.refresh_token_endpoint)
         self.user_info_endpoint = find_endpoint_by_purpose(endpoints, "user_info", self.user_info_endpoint)
         self.debug_endpoint = find_endpoint_by_purpose(endpoints, "debug", self.debug_endpoint)
         self.register_endpoint = find_endpoint_by_purpose(endpoints, "register", self.register_endpoint)
+        
+        # Also look for validate token endpoints which are common in JWT implementations
+        self.validate_token_endpoint = find_endpoint_by_purpose(endpoints, "validate", "/users/v1/validate")
+        
+        # Try to find protected endpoints that might use JWT for authorization
+        # These are endpoints that typically require authentication
+        protected_candidates = []
+        for endpoint in endpoints:
+            # Look for endpoints that might be protected based on path patterns
+            path = endpoint.get("path", "")
+            method = endpoint.get("method", "").upper()
+            
+            # Skip login, register, and public endpoints
+            if (path == self.login_endpoint or 
+                path == self.register_endpoint or 
+                "/public/" in path.lower()):
+                continue
+                
+            # Check for indicators of protected endpoints
+            is_protected = False
+            
+            # Check for authorization in parameters
+            if "parameters" in endpoint:
+                for param in endpoint.get("parameters", []):
+                    if param.get("name", "").lower() in ["authorization", "token", "jwt", "bearer"]:
+                        is_protected = True
+                        break
+            
+            # Check for security schemes
+            if "security" in endpoint and endpoint["security"]:
+                is_protected = True
+            
+            # Check path patterns that suggest protected resources
+            protected_patterns = ["/api/", "/v1/", "/v2/", "/me", "/user/", "/admin/", "/account/", "/profile/"]
+            if any(pattern in path.lower() for pattern in protected_patterns):
+                # Higher likelihood if it's a GET, PUT, PATCH or DELETE method
+                if method in ["GET", "PUT", "PATCH", "DELETE"]:
+                    is_protected = True
+            
+            if is_protected:
+                protected_candidates.append(path)
+        
+        # Update protected endpoints if we found candidates
+        if protected_candidates:
+            self.logger.info(f"Found {len(protected_candidates)} potentially protected endpoints")
+            # Combine with any configured protected endpoints
+            self.protected_endpoints = list(set(self.protected_endpoints + protected_candidates))
+        
+        self.logger.info(f"Using login endpoint: {self.login_endpoint}")
+        self.logger.info(f"Using refresh token endpoint: {self.refresh_token_endpoint}")
+        self.logger.info(f"Using user info endpoint: {self.user_info_endpoint}")
+        self.logger.info(f"Using validate token endpoint: {self.validate_token_endpoint if hasattr(self, 'validate_token_endpoint') else 'Not found'}")
+        self.logger.info(f"Using register endpoint: {self.register_endpoint}")
+        self.logger.info(f"Protected endpoints: {len(self.protected_endpoints)}")
     
     def run(self) -> List[Dict[str, Any]]:
         """

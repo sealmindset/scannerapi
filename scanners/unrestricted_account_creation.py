@@ -100,25 +100,80 @@ class Scanner(BaseScanner):
         Args:
             target: Target configuration containing OpenAPI data
         """
-        # Check if OpenAPI data is available in the target configuration
-        if "openapi" not in target or not isinstance(target["openapi"], dict):
-            self.logger.info("No OpenAPI specification data found in target configuration")
+        # Check if OpenAPI data is available
+        if not target.get("openapi_endpoints"):
+            self.logger.info("No OpenAPI data available for endpoint extraction")
             return
         
-        openapi_data = target["openapi"]
-        
-        # Extract endpoints from the OpenAPI specification
-        if "endpoints" not in openapi_data or not isinstance(openapi_data["endpoints"], list):
-            self.logger.info("No endpoints found in OpenAPI specification data")
-            return
-        
-        endpoints = openapi_data["endpoints"]
+        # Get endpoints from OpenAPI data
+        endpoints = target.get("openapi_endpoints", [])
         self.logger.info(f"Found {len(endpoints)} endpoints in OpenAPI specification")
         
-        # Use the utility function to find endpoints by purpose
+        # Use the enhanced utility function to find endpoints by purpose with improved scoring
+        # For account creation, we need to look for both create_user and register endpoints
         self.endpoint = find_endpoint_by_purpose(endpoints, "create_user", self.endpoint)
         self.register_endpoint = find_endpoint_by_purpose(endpoints, "register", self.register_endpoint)
+        
+        # If we didn't find a specific create_user endpoint but found a register endpoint,
+        # use the register endpoint for both
+        if self.endpoint == "/api/users" and self.register_endpoint != "/users/v1/register":
+            self.endpoint = self.register_endpoint
+            self.logger.info(f"Using register endpoint as create_user endpoint: {self.endpoint}")
+        
+        # Find login endpoint for authentication testing
+        self.login_endpoint = find_endpoint_by_purpose(endpoints, "login", self.login_endpoint)
+        
+        # Find password change endpoint
+        self.password_change_endpoint = find_endpoint_by_purpose(endpoints, "password_change", self.password_change_endpoint)
+        
+        # Find user info endpoint (often used to verify successful account creation)
+        self.user_info_endpoint = find_endpoint_by_purpose(endpoints, "user_info", "/users/v1/me")
+        
+        # Find debug endpoint
         self.debug_endpoint = find_endpoint_by_purpose(endpoints, "debug", self.debug_endpoint)
+        
+        # Try to find admin endpoints that might be vulnerable to privilege escalation
+        admin_candidates = []
+        for endpoint in endpoints:
+            path = endpoint.get("path", "")
+            method = endpoint.get("method", "").upper()
+            
+            # Look for admin-related patterns in the path
+            admin_patterns = ["/admin", "/manage", "/dashboard", "/control"]
+            if any(pattern in path.lower() for pattern in admin_patterns):
+                admin_candidates.append(path)
+                
+            # Look for admin-related patterns in tags
+            if "tags" in endpoint and endpoint["tags"]:
+                for tag in endpoint["tags"]:
+                    if "admin" in tag.lower() or "manage" in tag.lower():
+                        admin_candidates.append(path)
+                        break
+        
+        if admin_candidates:
+            self.admin_endpoints = list(set(admin_candidates))
+            self.logger.info(f"Found {len(self.admin_endpoints)} potential admin endpoints")
+        else:
+            self.admin_endpoints = []
+            
+        # Look for mobile-specific endpoints
+        if "/mobile/" in self.endpoint or "/api/v1/mobile/" in self.endpoint:
+            self.logger.info("Detected mobile API endpoint pattern")
+            # Adjust expectations for mobile APIs which often have different patterns
+            # Mobile APIs often use different field names or structures
+            if not self.config.get("mobile_fields_set", False):
+                self.username_field = self.config.get("mobile_username_field", "email")
+                self.email_field = self.config.get("mobile_email_field", "email")
+                self.password_field = self.config.get("mobile_password_field", "password")
+                self.config["mobile_fields_set"] = True
+                self.logger.info(f"Adjusted field names for mobile API: username={self.username_field}, email={self.email_field}")
+        
+        # Log the resolved endpoints
+        self.logger.info(f"Using endpoint for account creation: {self.endpoint}")
+        self.logger.info(f"Using register endpoint: {self.register_endpoint}")
+        self.logger.info(f"Using login endpoint: {self.login_endpoint}")
+        self.logger.info(f"Using password change endpoint: {self.password_change_endpoint}")
+        self.logger.info(f"Using user info endpoint: {self.user_info_endpoint if hasattr(self, 'user_info_endpoint') else 'Not found'}")
         self.login_endpoint = find_endpoint_by_purpose(endpoints, "login", self.login_endpoint)
         self.password_change_endpoint = find_endpoint_by_purpose(endpoints, "password_change", self.password_change_endpoint)
     

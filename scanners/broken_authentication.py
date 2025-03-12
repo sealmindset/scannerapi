@@ -91,23 +91,93 @@ class Scanner(BaseScanner):
         endpoints = target.get("openapi_endpoints", [])
         self.logger.info(f"Found {len(endpoints)} endpoints in OpenAPI specification")
         
-        # Use the utility function to find endpoints by purpose
+        # Use the enhanced utility function to find endpoints by purpose with improved scoring
         self.login_endpoint = find_endpoint_by_purpose(endpoints, "login", self.login_endpoint)
-        self.refresh_token_endpoint = find_endpoint_by_purpose(endpoints, "refresh", self.refresh_token_endpoint)
+        self.refresh_token_endpoint = find_endpoint_by_purpose(endpoints, "refresh_token", self.refresh_token_endpoint)
+        self.user_info_endpoint = find_endpoint_by_purpose(endpoints, "user_info", self.user_info_endpoint)
         self.debug_endpoint = find_endpoint_by_purpose(endpoints, "debug", self.debug_endpoint)
         self.register_endpoint = find_endpoint_by_purpose(endpoints, "register", self.register_endpoint)
         
-        # Look for user info endpoints
+        # Find password change endpoint
+        self.password_change_endpoint = find_endpoint_by_purpose(endpoints, "password_change", "/users/v1/password")
+        
+        # Find logout endpoint
+        self.logout_endpoint = find_endpoint_by_purpose(endpoints, "logout", "/users/v1/logout")
+        
+        # Find validate token endpoint
+        self.validate_token_endpoint = find_endpoint_by_purpose(endpoints, "validate", "/users/v1/validate")
+        
+        # Try to find protected endpoints that might use authentication
+        protected_candidates = []
         for endpoint in endpoints:
-            path = endpoint.get("path", "").lower()
+            # Look for endpoints that might be protected based on path patterns
+            path = endpoint.get("path", "")
             method = endpoint.get("method", "").upper()
-            operation_id = endpoint.get("operation_id", "").lower()
             
-            # Find user info endpoints
-            if "user" in path and "me" in path and method == "GET":
-                self.user_info_endpoint = endpoint.get("path")
-                self.logger.info(f"Found user info endpoint: {self.user_info_endpoint}")
+            # Skip login, register, and public endpoints
+            if (path == self.login_endpoint or 
+                path == self.register_endpoint or 
+                "/public/" in path.lower()):
+                continue
+                
+            # Check for indicators of protected endpoints
+            is_protected = False
+            
+            # Check for authorization in parameters
+            if "parameters" in endpoint:
+                for param in endpoint.get("parameters", []):
+                    if param.get("name", "").lower() in ["authorization", "token", "jwt", "bearer"]:
+                        is_protected = True
+                        break
+            
+            # Check for security schemes
+            if "security" in endpoint and endpoint["security"]:
+                is_protected = True
+            
+            # Check path patterns that suggest protected resources
+            protected_patterns = ["/api/", "/v1/", "/v2/", "/me", "/user/", "/profile/", "/account/", "/subscription/"]
+            if any(pattern in path.lower() for pattern in protected_patterns):
+                # Higher likelihood if it's a GET, PUT, PATCH or DELETE method
+                if method in ["GET", "PUT", "PATCH", "DELETE"]:
+                    is_protected = True
+            
+            if is_protected:
+                protected_candidates.append(path)
+        
+        # Update protected endpoints if we found candidates
+        if protected_candidates:
+            self.logger.info(f"Found {len(protected_candidates)} potentially protected endpoints")
+            # Combine with any configured protected endpoints
+            self.protected_endpoints = list(set(self.protected_endpoints + protected_candidates))
+        
+        # Look for mobile-specific endpoints
+        mobile_api_detected = False
+        for endpoint in endpoints:
+            path = endpoint.get("path", "")
+            if "/mobile/" in path or "/api/v1/mobile/" in path:
+                mobile_api_detected = True
                 break
+                
+        if mobile_api_detected:
+            self.logger.info("Detected mobile API endpoints")
+            # Adjust expectations for mobile APIs which often have different patterns
+            if not self.config.get("mobile_fields_set", False):
+                self.username_field = self.config.get("mobile_username_field", "email")
+                self.password_field = self.config.get("mobile_password_field", "password")
+                self.access_token_field = self.config.get("mobile_access_token_field", "token")
+                self.refresh_token_field = self.config.get("mobile_refresh_token_field", "refreshToken")
+                self.config["mobile_fields_set"] = True
+                self.logger.info(f"Adjusted field names for mobile API: username={self.username_field}, token={self.access_token_field}")
+        
+        # Log the resolved endpoints
+        self.logger.info(f"Using login endpoint: {self.login_endpoint}")
+        self.logger.info(f"Using refresh token endpoint: {self.refresh_token_endpoint}")
+        self.logger.info(f"Using user info endpoint: {self.user_info_endpoint}")
+        self.logger.info(f"Using register endpoint: {self.register_endpoint}")
+        self.logger.info(f"Using password change endpoint: {self.password_change_endpoint if hasattr(self, 'password_change_endpoint') else 'Not found'}")
+        self.logger.info(f"Using logout endpoint: {self.logout_endpoint if hasattr(self, 'logout_endpoint') else 'Not found'}")
+        self.logger.info(f"Using validate token endpoint: {self.validate_token_endpoint if hasattr(self, 'validate_token_endpoint') else 'Not found'}")
+        self.logger.info(f"Protected endpoints: {len(self.protected_endpoints)}")
                 
     def _test_exposed_credentials(self) -> None:
         """

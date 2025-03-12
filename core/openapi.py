@@ -258,7 +258,8 @@ def find_endpoint_by_purpose(endpoints: List[Dict[str, Any]], purpose: str, defa
     
     This function uses a combination of path patterns, operation IDs, descriptions,
     tags, and summaries to identify endpoints that match a specific purpose.
-    It applies a scoring system to rank potential matches.
+    It applies a scoring system to rank potential matches and is designed to work
+    with various API naming conventions and structures.
     
     Args:
         endpoints: List of endpoint dictionaries from extract_endpoints
@@ -271,68 +272,121 @@ def find_endpoint_by_purpose(endpoints: List[Dict[str, Any]], purpose: str, defa
     # Define mapping of purposes to patterns, keywords, and related concepts
     purpose_mapping = {
         "register": {
-            "path_patterns": ["/register", "/signup", "/sign-up", "/users/register", "/users/v1/register", "/api/users/register", "/auth/register", "/auth/sign-up", "/auth/signup", "/account/create", "/account/new", "/account/register", "/account/signup"],
-            "operation_ids": ["register", "registerUser", "createUser", "signup", "signUp", "userRegistration", "createAccount", "newUser", "addUser"],
+            "path_patterns": ["/register", "/signup", "/sign-up", "/users/register", "/users/v1/register", "/api/users/register", "/auth/register", "/auth/sign-up", "/auth/signup", "/account/create", "/account/new", "/account/register", "/account/signup", "/api/v1/auth/sign-up", "/api/v1/mobile/auth/sign-up", "/api/v1/users/register", "/api/v1/accounts/create"],
+            "path_segments": ["register", "signup", "sign-up", "create", "new", "onboarding"],
+            "operation_ids": ["register", "registerUser", "createUser", "signup", "signUp", "userRegistration", "createAccount", "newUser", "addUser", "createProfile", "registerAccount", "signUpUser"],
             "methods": ["POST"],
-            "tags": ["user", "users", "auth", "authentication", "account", "accounts", "registration"],
-            "description_keywords": ["register", "signup", "sign up", "sign-up", "create account", "new user", "new account", "registration", "onboarding", "join", "enroll"],
+            "tags": ["user", "users", "auth", "authentication", "account", "accounts", "registration", "onboarding", "mobile"],
+            "description_keywords": ["register", "signup", "sign up", "sign-up", "create account", "new user", "new account", "registration", "onboarding", "join", "enroll", "create profile"],
             "related_purposes": ["create_user"]
         },
         "login": {
-            "path_patterns": ["/login", "/signin", "/sign-in", "/users/login", "/users/v1/login", "/api/users/login", "/auth/login", "/auth/signin", "/auth/sign-in", "/account/login", "/account/signin"],
-            "operation_ids": ["login", "loginUser", "signin", "signIn", "userLogin", "authenticate", "auth", "getToken", "getAccessToken"],
+            "path_patterns": ["/login", "/signin", "/sign-in", "/users/login", "/users/v1/login", "/api/users/login", "/auth/login", "/auth/signin", "/auth/sign-in", "/account/login", "/account/signin", "/api/v1/auth/sign-in", "/api/v1/mobile/auth/sign-in", "/api/v1/users/login", "/api/v1/accounts/login"],
+            "path_segments": ["login", "signin", "sign-in", "authenticate", "auth"],
+            "operation_ids": ["login", "loginUser", "signin", "signIn", "userLogin", "authenticate", "auth", "getToken", "getAccessToken", "authenticateUser", "signInUser"],
             "methods": ["POST"],
-            "tags": ["user", "users", "auth", "authentication", "account", "accounts", "login"],
-            "description_keywords": ["login", "log in", "signin", "sign in", "sign-in", "authenticate", "authentication", "access token", "session", "credentials"],
+            "tags": ["user", "users", "auth", "authentication", "account", "accounts", "login", "mobile"],
+            "description_keywords": ["login", "log in", "signin", "sign in", "sign-in", "authenticate", "authentication", "access token", "session", "credentials", "user login", "account login"],
             "related_purposes": ["authenticate"]
         },
+        "refresh_token": {
+            "path_patterns": ["/refresh", "/token/refresh", "/auth/refresh", "/refresh-token", "/auth/refresh-token", "/token/refresh-token", "/refresh-tokens", "/auth/refresh-tokens", "/api/v1/auth/refresh-tokens", "/api/v1/mobile/auth/refresh-tokens", "/api/v1/token/refresh"],
+            "path_segments": ["refresh", "refresh-token", "refresh-tokens", "token", "tokens"],
+            "operation_ids": ["refreshToken", "refreshTokens", "tokenRefresh", "renewToken", "renewTokens", "regenerateToken", "getNewToken", "refreshAccessToken", "refreshJwt"],
+            "methods": ["POST"],
+            "tags": ["auth", "authentication", "token", "refresh", "security", "mobile"],
+            "description_keywords": ["refresh", "token", "renew", "regenerate", "access token", "new token", "jwt", "refresh token", "token refresh"],
+            "related_purposes": ["token_refresh"]
+        },
+        "user_info": {
+            "path_patterns": ["/me", "/users/me", "/user/me", "/account/me", "/profile", "/my-profile", "/user-info", "/account-info", "/user/profile", "/users/profile", "/api/v1/users/me", "/api/v1/mobile/users/me", "/api/v1/profile"],
+            "path_segments": ["me", "profile", "user-info", "account-info", "my-profile"],
+            "operation_ids": ["getMe", "getUserInfo", "getMyProfile", "getMyAccount", "getCurrentUser", "getProfile", "getMyInfo", "getUserProfile", "fetchCurrentUser"],
+            "methods": ["GET"],
+            "tags": ["user", "users", "profile", "account", "me", "mobile"],
+            "description_keywords": ["my profile", "my account", "user info", "account info", "profile", "current user", "logged in user", "authenticated user", "user profile", "user details"],
+            "related_purposes": ["get_user"]
+        },
         "debug": {
-            "path_patterns": ["/_debug", "/debug", "/users/_debug", "/users/v1/_debug", "/api/users/debug", "/system/debug", "/dev", "/development", "/test", "/internal"],
-            "operation_ids": ["debug", "getDebugInfo", "getUsersDebug", "testEndpoint", "devTools", "systemCheck", "diagnostics", "validate"],
+            "path_patterns": ["/_debug", "/debug", "/users/_debug", "/users/v1/_debug", "/api/users/debug", "/system/debug", "/dev", "/development", "/test", "/internal", "/api/v1/debug", "/api/v1/system/debug"],
+            "path_segments": ["debug", "dev", "test", "internal", "diagnostics"],
+            "operation_ids": ["debug", "getDebugInfo", "getUsersDebug", "testEndpoint", "devTools", "systemCheck", "diagnostics", "validate", "systemDiagnostics"],
             "methods": ["GET", "POST"],
-            "tags": ["debug", "development", "test", "internal", "system", "diagnostics"],
-            "description_keywords": ["debug", "test", "development", "internal", "diagnostics", "validate", "check", "verification", "system status"],
+            "tags": ["debug", "development", "test", "internal", "system", "diagnostics", "admin"],
+            "description_keywords": ["debug", "test", "development", "internal", "diagnostics", "validate", "check", "verification", "system status", "system health"],
             "related_purposes": ["test", "validate"]
         },
         "create_user": {
-            "path_patterns": ["/users", "/api/users", "/users/v1", "/accounts", "/api/accounts", "/admin/users", "/admin/accounts"],
-            "operation_ids": ["createUser", "addUser", "postUser", "newUser", "createAccount", "addAccount"],
+            "path_patterns": ["/users", "/api/users", "/users/v1", "/accounts", "/api/accounts", "/admin/users", "/admin/accounts", "/api/v1/users", "/api/v1/accounts", "/api/v1/admin/users"],
+            "path_segments": ["users", "accounts", "user", "account", "admin"],
+            "operation_ids": ["createUser", "addUser", "postUser", "newUser", "createAccount", "addAccount", "createProfile", "addProfile"],
             "methods": ["POST"],
-            "tags": ["user", "users", "account", "accounts", "admin"],
-            "description_keywords": ["create user", "add user", "new user", "user creation", "account creation", "add account"],
+            "tags": ["user", "users", "account", "accounts", "admin", "management"],
+            "description_keywords": ["create user", "add user", "new user", "user creation", "account creation", "add account", "create profile", "add profile"],
             "related_purposes": ["register"]
         },
         "update_user": {
-            "path_patterns": ["/users/{id}", "/api/users/{id}", "/users/v1/{id}", "/users/{username}", "/users/v1/{username}", "/accounts/{id}", "/users/me", "/accounts/me", "/profile", "/user/profile"],
-            "operation_ids": ["updateUser", "putUser", "patchUser", "modifyUser", "editUser", "updateAccount", "updateProfile", "editProfile"],
+            "path_patterns": ["/users/{id}", "/api/users/{id}", "/users/v1/{id}", "/users/{username}", "/users/v1/{username}", "/accounts/{id}", "/users/me", "/accounts/me", "/profile", "/user/profile", "/api/v1/users/{id}", "/api/v1/users/me", "/api/v1/mobile/users/me", "/api/v1/profile"],
+            "path_segments": ["users", "accounts", "profile", "me", "user"],
+            "operation_ids": ["updateUser", "putUser", "patchUser", "modifyUser", "editUser", "updateAccount", "updateProfile", "editProfile", "updateMe", "updateCurrentUser"],
             "methods": ["PUT", "PATCH"],
-            "tags": ["user", "users", "account", "accounts", "profile"],
-            "description_keywords": ["update user", "edit user", "modify user", "change user", "update account", "edit account", "update profile", "edit profile"],
+            "tags": ["user", "users", "account", "accounts", "profile", "mobile"],
+            "description_keywords": ["update user", "edit user", "modify user", "change user", "update account", "edit account", "update profile", "edit profile", "modify profile", "update me"],
             "related_purposes": ["edit_profile"]
         },
         "get_user": {
-            "path_patterns": ["/users/{id}", "/api/users/{id}", "/users/v1/{id}", "/users/{username}", "/users/v1/{username}", "/accounts/{id}", "/users/me", "/accounts/me", "/profile", "/user/profile"],
-            "operation_ids": ["getUser", "getUserById", "getUserByUsername", "fetchUser", "retrieveUser", "getAccount", "getProfile", "fetchProfile", "retrieveProfile"],
+            "path_patterns": ["/users/{id}", "/api/users/{id}", "/users/v1/{id}", "/users/{username}", "/users/v1/{username}", "/accounts/{id}", "/users/me", "/accounts/me", "/profile", "/user/profile", "/api/v1/users/{id}", "/api/v1/users/me", "/api/v1/mobile/users/me", "/api/v1/profile"],
+            "path_segments": ["users", "accounts", "profile", "me", "user"],
+            "operation_ids": ["getUser", "getUserById", "getUserByUsername", "fetchUser", "retrieveUser", "getAccount", "getProfile", "fetchProfile", "retrieveProfile", "getMe", "getCurrentUser"],
             "methods": ["GET"],
-            "tags": ["user", "users", "account", "accounts", "profile"],
-            "description_keywords": ["get user", "fetch user", "retrieve user", "user details", "user info", "user information", "get account", "account details", "profile info", "profile details"],
-            "related_purposes": ["view_profile"]
+            "tags": ["user", "users", "account", "accounts", "profile", "mobile"],
+            "description_keywords": ["get user", "fetch user", "retrieve user", "user details", "user info", "user information", "get account", "account details", "profile info", "profile details", "current user"],
+            "related_purposes": ["view_profile", "user_info"]
         },
         "password_change": {
-            "path_patterns": ["/users/{id}/password", "/users/v1/{id}/password", "/users/{username}/password", "/users/v1/{username}/password", "/password", "/change-password", "/reset-password", "/auth/password", "/account/password", "/users/me/password"],
-            "operation_ids": ["changePassword", "updatePassword", "resetPassword", "modifyPassword", "newPassword", "passwordReset", "passwordUpdate"],
+            "path_patterns": ["/users/{id}/password", "/users/v1/{id}/password", "/users/{username}/password", "/users/v1/{username}/password", "/password", "/change-password", "/reset-password", "/auth/password", "/account/password", "/users/me/password", "/api/v1/users/me/password", "/api/v1/auth/password", "/api/v1/mobile/auth/password"],
+            "path_segments": ["password", "change-password", "reset-password"],
+            "operation_ids": ["changePassword", "updatePassword", "resetPassword", "modifyPassword", "newPassword", "passwordReset", "passwordUpdate", "setNewPassword", "updateUserPassword"],
             "methods": ["PUT", "PATCH", "POST"],
-            "tags": ["user", "users", "auth", "authentication", "account", "accounts", "password", "security"],
-            "description_keywords": ["change password", "update password", "reset password", "modify password", "new password", "password reset", "password change", "password update"],
+            "tags": ["user", "users", "auth", "authentication", "account", "accounts", "password", "security", "mobile"],
+            "description_keywords": ["change password", "update password", "reset password", "modify password", "new password", "password reset", "password change", "password update", "set password"],
             "related_purposes": ["reset_password"]
         },
         "validate": {
-            "path_patterns": ["/validate", "/check", "/verify", "/auth/check", "/auth/validate", "/auth/verify", "/token/validate", "/token/verify", "/session/validate", "/session/check"],
-            "operation_ids": ["validate", "check", "verify", "validateToken", "checkToken", "verifyToken", "validateSession", "checkSession", "verifySession"],
+            "path_patterns": ["/validate", "/check", "/verify", "/auth/check", "/auth/validate", "/auth/verify", "/token/validate", "/token/verify", "/session/validate", "/session/check", "/api/v1/auth/check", "/api/v1/mobile/auth/check", "/api/v1/token/validate"],
+            "path_segments": ["validate", "check", "verify", "token", "auth"],
+            "operation_ids": ["validate", "check", "verify", "validateToken", "checkToken", "verifyToken", "validateSession", "checkSession", "verifySession", "checkUser", "verifyUser", "validateAuth"],
             "methods": ["GET", "POST"],
-            "tags": ["auth", "authentication", "token", "session", "validation", "verification"],
-            "description_keywords": ["validate", "check", "verify", "validation", "verification", "token validation", "session check", "auth check", "authentication verification"],
+            "tags": ["auth", "authentication", "token", "session", "validation", "verification", "security", "mobile"],
+            "description_keywords": ["validate", "check", "verify", "validation", "verification", "token validation", "session check", "auth check", "authentication verification", "user check", "user verification"],
             "related_purposes": ["check_auth", "verify_token"]
+        },
+        "device_info": {
+            "path_patterns": ["/device", "/device-info", "/users/me/device", "/users/me/device-info", "/account/device", "/profile/device", "/devices", "/api/v1/users/me/device-info", "/api/v1/mobile/users/me/device-info", "/api/v1/device"],
+            "path_segments": ["device", "device-info", "devices"],
+            "operation_ids": ["getDevice", "getDeviceInfo", "getUserDevice", "fetchDeviceInfo", "retrieveDeviceInfo", "getDevices", "getCurrentDevice", "getMyDevice"],
+            "methods": ["GET"],
+            "tags": ["device", "devices", "user", "profile", "mobile", "hardware"],
+            "description_keywords": ["device", "device info", "user device", "device information", "hardware", "mobile device", "connected device", "my device", "current device"],
+            "related_purposes": ["get_device"]
+        },
+        "health_info": {
+            "path_patterns": ["/health", "/health-info", "/users/me/health", "/users/me/health-info", "/users/me/personal-health-info", "/profile/health", "/medical", "/medical-info", "/api/v1/users/me/personal-health-info", "/api/v1/mobile/users/me/personal-health-info", "/api/v1/health"],
+            "path_segments": ["health", "health-info", "personal-health-info", "medical", "medical-info"],
+            "operation_ids": ["getHealth", "getHealthInfo", "getUserHealth", "fetchHealthInfo", "retrieveHealthInfo", "getMedicalInfo", "getPersonalHealthInfo", "getMyHealth", "getMyMedicalInfo"],
+            "methods": ["GET"],
+            "tags": ["health", "medical", "user", "profile", "mobile", "personal"],
+            "description_keywords": ["health", "health info", "medical", "medical info", "personal health", "health information", "medical information", "personal health information", "my health", "health data"],
+            "related_purposes": ["get_health"]
+        },
+        "subscription": {
+            "path_patterns": ["/subscription", "/subscriptions", "/users/me/subscription", "/users/me/subscriptions", "/account/subscription", "/profile/subscription", "/api/v1/users/me/subscription", "/api/v1/mobile/users/me/subscription", "/api/v1/subscription"],
+            "path_segments": ["subscription", "subscriptions", "billing", "payment", "plan"],
+            "operation_ids": ["getSubscription", "getSubscriptionInfo", "getUserSubscription", "fetchSubscriptionInfo", "retrieveSubscriptionInfo", "getMySubscription", "getCurrentSubscription", "getBillingInfo"],
+            "methods": ["GET"],
+            "tags": ["subscription", "billing", "payment", "user", "profile", "mobile", "plan"],
+            "description_keywords": ["subscription", "subscription info", "user subscription", "subscription information", "billing", "payment", "plan", "my subscription", "current plan", "membership"],
+            "related_purposes": ["get_subscription"]
         }
     }
     
@@ -360,11 +414,15 @@ def find_endpoint_by_purpose(endpoints: List[Dict[str, Any]], purpose: str, defa
             continue
         
         # Operation ID matching (highest importance)
-        if endpoint["operation_id"]:
+        if endpoint.get("operation_id"):
             for op_id in purpose_info["operation_ids"]:
                 if op_id.lower() in endpoint["operation_id"].lower():
                     score += 40
                     reasons.append(f"operation_id_contains_{op_id}")
+                    # Exact match gets bonus points
+                    if op_id.lower() == endpoint["operation_id"].lower():
+                        score += 15
+                        reasons.append(f"operation_id_exact_match_{op_id}")
                     break
         
         # Path pattern matching (high importance)
@@ -372,7 +430,31 @@ def find_endpoint_by_purpose(endpoints: List[Dict[str, Any]], purpose: str, defa
             if pattern.lower() in endpoint["path"].lower():
                 score += 30
                 reasons.append(f"path_contains_{pattern}")
+                # Exact match gets bonus points
+                if pattern.lower() == endpoint["path"].lower():
+                    score += 15
+                    reasons.append(f"path_exact_match_{pattern}")
                 break
+        
+        # Path segment matching (medium-high importance)
+        path_segments = [segment.lower() for segment in endpoint["path"].split("/") if segment]
+        for segment in purpose_info.get("path_segments", []):
+            if segment.lower() in path_segments:
+                score += 25
+                reasons.append(f"path_segment_{segment}")
+                break
+        
+        # API version pattern detection (e.g., /api/v1/, /v2/)
+        if any(re.match(r'/api/v\d+/', part) or re.match(r'/v\d+/', part) for part in endpoint["path"].split('/') if part):
+            # This is a versioned API endpoint, which is more likely to be a formal API
+            score += 5
+            reasons.append("versioned_api")
+        
+        # Mobile API pattern detection
+        if "/mobile/" in endpoint["path"].lower() or "mobile" in path_segments:
+            if purpose in ["device_info", "health_info", "subscription", "user_info"]:
+                score += 15
+                reasons.append("mobile_api_endpoint")
         
         # Tag matching (medium importance)
         if "tags" in endpoint and endpoint["tags"]:
@@ -389,35 +471,74 @@ def find_endpoint_by_purpose(endpoints: List[Dict[str, Any]], purpose: str, defa
                     if keyword.lower() in endpoint[field].lower():
                         score += 15
                         reasons.append(f"{field}_contains_{keyword}")
+                        # Exact phrase match gets bonus points
+                        if re.search(r'\b' + re.escape(keyword.lower()) + r'\b', endpoint[field].lower()):
+                            score += 5
+                            reasons.append(f"{field}_exact_phrase_{keyword}")
                         break
         
         # Check for path parameters that might indicate a specific resource (like user ID)
         if "{" in endpoint["path"] and "}" in endpoint["path"]:
-            if purpose in ["get_user", "update_user"]:
+            if purpose in ["get_user", "update_user", "password_change"]:
                 score += 10
                 reasons.append("path_parameter")
+                
+                # Check if the parameter name is relevant to the purpose
+                param_names = re.findall(r'\{([^}]+)\}', endpoint["path"])
+                relevant_params = ["id", "user", "user_id", "userId", "username", "email"]
+                if any(param in relevant_params for param in param_names):
+                    score += 5
+                    reasons.append("relevant_path_parameter")
         
         # Special case for paths containing 'user' or 'account'
-        if purpose in ["get_user", "update_user", "create_user", "register"]:
+        if purpose in ["get_user", "update_user", "create_user", "register", "user_info"]:
             if "user" in endpoint["path"].lower() or "account" in endpoint["path"].lower():
                 score += 10
                 reasons.append("path_contains_user")
         
-        # Special case for paths containing 'view' or 'get'
-        if purpose == "get_user" and ("view" in endpoint["path"].lower() or "get" in endpoint["description"].lower()):
-            score += 10
-            reasons.append("path_contains_view,description_contains_get")
+        # Special case for paths containing 'auth' or 'token'
+        if purpose in ["login", "refresh_token", "validate"]:
+            if "auth" in endpoint["path"].lower() or "token" in endpoint["path"].lower():
+                score += 15
+                reasons.append("path_contains_auth_or_token")
         
+        # Special case for paths containing 'me' or 'my' for user-specific endpoints
+        if purpose in ["user_info", "get_user", "device_info", "health_info", "subscription"]:
+            if "/me" in endpoint["path"].lower() or "/my" in endpoint["path"].lower():
+                score += 20
+                reasons.append("path_contains_me_or_my")
+        
+        # Special case for paths containing 'view' or 'get'
+        if purpose == "get_user" and ("view" in endpoint["path"].lower() or 
+                                     ("description" in endpoint and "get" in endpoint["description"].lower())):
+            score += 10
+            reasons.append("path_contains_view_or_description_contains_get")
+        
+        # Special case for paths containing 'health' or 'medical'
+        if purpose == "health_info" and ("health" in endpoint["path"].lower() or "medical" in endpoint["path"].lower()):
+            score += 20
+            reasons.append("path_contains_health_or_medical")
+        
+        # Special case for paths containing 'device'
+        if purpose == "device_info" and "device" in endpoint["path"].lower():
+            score += 20
+            reasons.append("path_contains_device")
+        
+        # Special case for paths containing 'subscription'
+        if purpose == "subscription" and "subscription" in endpoint["path"].lower():
+            score += 20
+            reasons.append("path_contains_subscription")
+            
         # Special case for paths containing 'query' or 'search'
         if ("query" in endpoint["path"].lower() or "search" in endpoint["path"].lower() or 
            ("description" in endpoint and ("query" in endpoint["description"].lower() or "search" in endpoint["description"].lower()))):
             score += 10
-            reasons.append("description_contains_query")
+            reasons.append("contains_query_or_search")
         
         # Special case for record-related endpoints
         if "record" in endpoint["path"].lower() or ("description" in endpoint and "record" in endpoint["description"].lower()):
             score += 5
-            reasons.append("description_contains_record")
+            reasons.append("contains_record")
         
         # Store the score and reasons if above threshold
         if score > 0:
