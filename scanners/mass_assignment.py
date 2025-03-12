@@ -10,6 +10,7 @@ import json
 import time
 import logging
 import os
+import requests
 from typing import Dict, List, Any, Optional, Tuple
 
 import yaml
@@ -41,6 +42,38 @@ class Scanner(BaseScanner):
         self.get_endpoint = config.get("get_endpoint", "/api/users/{id}")
         self.register_endpoint = config.get("register_endpoint", "/users/v1/register")
         self.debug_endpoint = config.get("debug_endpoint", "/users/v1/_debug")
+        
+        # Set up authentication details
+        auth_config = target.get("auth", {})
+        self.auth_type = auth_config.get("type", "none")
+        self.auth_token = None
+        self.token_expiry = None
+        
+        # For bearer token authentication with login
+        self.login_endpoint = auth_config.get("login_endpoint")
+        self.auth_username = None
+        self.auth_password = None
+        
+        # Extract credentials if available
+        credentials = auth_config.get("credentials", {})
+        if credentials:
+            # Support both username and email fields for authentication
+            self.auth_username = credentials.get("email", credentials.get("username", ""))
+            self.auth_password = credentials.get("password", "")
+            
+            if self.auth_username and self.auth_password:
+                self.logger.info(f"Using credentials for user: {self.auth_username}")
+            else:
+                self.logger.warn("Incomplete credentials provided for authentication")
+        
+        # Extract field names for authentication
+        self.username_field = auth_config.get("username_field", "email")
+        self.password_field = auth_config.get("password_field", "password")
+        self.token_field = auth_config.get("token_field", "token")
+        
+        # For Snorefox API, we need to get an auth token before testing
+        if self.auth_type == "bearer" and self.login_endpoint and self.auth_username and self.auth_password:
+            self._get_auth_token()
         
         # Extract endpoints from OpenAPI spec if available
         self._extract_endpoints_from_openapi(target)
@@ -82,6 +115,88 @@ class Scanner(BaseScanner):
             "password": "Test@123456"
         })
     
+    def _get_auth_token(self) -> None:
+        """Get authentication token by logging in to the API."""
+        if not self.login_endpoint:
+            self.logger.warn("No login endpoint provided for authentication")
+            return
+        
+        self.logger.info(f"Attempting to get authentication token from {self.login_endpoint}")
+        
+        # Prepare login payload based on configured field names
+        login_payload = {
+            self.username_field: self.auth_username,
+            self.password_field: self.auth_password
+        }
+        
+        try:
+            # Make login request
+            login_url = self._get_full_url(self.login_endpoint)
+            headers = {"Content-Type": "application/json", "Accept": "application/json"}
+            
+            response = requests.post(
+                url=login_url,
+                json=login_payload,
+                headers=headers,
+                timeout=10,
+                verify=False
+            )
+            
+            if response.status_code in [200, 201, 204]:
+                try:
+                    data = response.json()
+                    
+                    # Try to extract the token from various common response formats
+                    token = None
+                    
+                    # Direct token in response
+                    if self.token_field in data:
+                        token = data[self.token_field]
+                    # JWT format with separate access token
+                    elif "access_token" in data:
+                        token = data["access_token"]
+                    elif "accessToken" in data:
+                        token = data["accessToken"]
+                    # Nested token in data or user object
+                    elif "data" in data and isinstance(data["data"], dict):
+                        if self.token_field in data["data"]:
+                            token = data["data"][self.token_field]
+                        elif "access_token" in data["data"]:
+                            token = data["data"]["access_token"]
+                        elif "accessToken" in data["data"]:
+                            token = data["data"]["accessToken"]
+                    # Token nested in user object
+                    elif "user" in data and isinstance(data["user"], dict):
+                        if self.token_field in data["user"]:
+                            token = data["user"][self.token_field]
+                        elif "access_token" in data["user"]:
+                            token = data["user"]["access_token"]
+                        elif "accessToken" in data["user"]:
+                            token = data["user"]["accessToken"]
+                    
+                    if token:
+                        self.auth_token = token
+                        self.logger.info("Successfully obtained authentication token")
+                        
+                        # Try to extract token expiry time if available
+                        if "expires_in" in data:
+                            expires_in = data["expires_in"]
+                            if isinstance(expires_in, (int, float)):
+                                self.token_expiry = time.time() + expires_in
+                        elif "exp" in data:
+                            self.token_expiry = data["exp"]
+                        else:
+                            # Default token expiry to 1 hour from now
+                            self.token_expiry = time.time() + 3600
+                    else:
+                        self.logger.warn(f"Could not extract token from login response: {data}")
+                except Exception as e:
+                    self.logger.error(f"Error parsing login response: {str(e)}")
+            else:
+                self.logger.warn(f"Failed to get authentication token, status code: {response.status_code}")
+        except Exception as e:
+            self.logger.error(f"Error getting authentication token: {str(e)}")
+    
     def run(self) -> List[Dict[str, Any]]:
         """
         Run the scanner.
@@ -90,6 +205,10 @@ class Scanner(BaseScanner):
             List of findings
         """
         self.logger.info("Starting mass assignment vulnerability scanner")
+        
+        # Ensure we have a valid authentication token if needed
+        if self.auth_type == "bearer" and not self.auth_token and self.login_endpoint and self.auth_username and self.auth_password:
+            self._get_auth_token()
         
         # If specific endpoints are provided, test those
         if self.endpoints:
@@ -107,6 +226,117 @@ class Scanner(BaseScanner):
         
         # Return findings
         return self.findings
+    
+    def _make_request(self, method: str, endpoint: str, json_data: Optional[Dict[str, Any]] = None) -> requests.Response:
+        """Make an HTTP request to the target API with proper authentication."""
+        url = self._get_full_url(endpoint)
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        
+        # Add authentication token if available
+        if self.auth_type == "bearer" and self.auth_token:
+            headers["Authorization"] = f"Bearer {self.auth_token}"
+            self.logger.debug("Using bearer token authentication")
+        
+        # Check if token is expired and refresh if needed
+        if self.auth_type == "bearer" and hasattr(self, "token_expiry") and self.token_expiry:
+            if time.time() >= (self.token_expiry - 30):  # 30-second buffer
+                self.logger.info("Auth token expired or about to expire, refreshing")
+                self._get_auth_token()
+                if self.auth_token:
+                    headers["Authorization"] = f"Bearer {self.auth_token}"
+        
+        # Store request details for evidence
+        request_details = {
+            "method": method,
+            "url": url,
+            "headers": dict(headers),
+            "json_data": json_data
+        }
+        
+        try:
+            self.logger.debug(f"Making {method} request to {url}")
+            response = requests.request(
+                method=method,
+                url=url,
+                json=json_data,
+                headers=headers,
+                timeout=10,
+                verify=False
+            )
+            
+            # Store response details for evidence
+            response_details = {
+                "status_code": response.status_code,
+                "headers": dict(response.headers),
+                "body": self._safely_get_response_body(response)
+            }
+            
+            # Handle 401 Unauthorized by refreshing token and retrying once
+            if response.status_code == 401 and self.auth_type == "bearer":
+                self.logger.info("Received 401 Unauthorized, refreshing token and retrying")
+                self._get_auth_token()
+                
+                if self.auth_token:
+                    # Update authorization header with new token
+                    headers["Authorization"] = f"Bearer {self.auth_token}"
+                    
+                    # Retry the request
+                    response = requests.request(
+                        method=method,
+                        url=url,
+                        json=json_data,
+                        headers=headers,
+                        timeout=10,
+                        verify=False
+                    )
+                    
+                    # Update response details for evidence
+                    response_details = {
+                        "status_code": response.status_code,
+                        "headers": dict(response.headers),
+                        "body": self._safely_get_response_body(response)
+                    }
+            
+            # Attach request and response details to the response object for later use
+            response.request_details = request_details
+            response.response_details = response_details
+            
+            return response
+        except Exception as e:
+            self.logger.error(f"Error making request to {url}: {str(e)}")
+            # Return a dummy response object with an error status code
+            response = requests.Response()
+            response.status_code = 500
+            # Attach request details even for failed requests
+            response.request_details = request_details
+            response.response_details = {
+                "status_code": 500,
+                "error": str(e)
+            }
+            return response
+    
+    def _safely_get_response_body(self, response: requests.Response) -> Any:
+        """Safely extract the response body as JSON or text."""
+        try:
+            return response.json()
+        except ValueError:
+            # If not JSON, return text (truncated if too large)
+            return response.text[:2000] if len(response.text) > 2000 else response.text
+    
+    def _get_full_url(self, endpoint: str) -> str:
+        """Get the full URL for an endpoint."""
+        if endpoint.startswith("http"):
+            return endpoint
+        
+        base_url = self.target.get("base_url", "")
+        if not base_url:
+            return endpoint
+        
+        # Handle both with and without trailing/leading slashes
+        base_url = base_url.rstrip("/")
+        endpoint = endpoint.lstrip("/")
+        
+        return f"{base_url}/{endpoint}"
     
     def _test_endpoint(self, endpoint_config: Any) -> None:
         """
@@ -223,27 +453,38 @@ class Scanner(BaseScanner):
                                     verify_data = verify_response.json()
                                     if field in verify_data and verify_data[field] == payload[field]:
                                         # Field was successfully set
+                                        # Create detailed evidence with full request and response information
+                                        evidence = {
+                                            "request": {
+                                                "method": method,
+                                                "endpoint": endpoint,
+                                                "url": response.request_details["url"] if hasattr(response, "request_details") else None,
+                                                "headers": response.request_details["headers"] if hasattr(response, "request_details") else None,
+                                                "payload": payload
+                                            },
+                                            "response": {
+                                                "status_code": response.status_code,
+                                                "headers": response.response_details["headers"] if hasattr(response, "response_details") else None,
+                                                "body": response.response_details["body"] if hasattr(response, "response_details") else response.text[:1000]
+                                            },
+                                            "verification": {
+                                                "endpoint": verify_endpoint,
+                                                "method": "GET",
+                                                "url": verify_response.request_details["url"] if hasattr(verify_response, "request_details") else None,
+                                                "headers": verify_response.request_details["headers"] if hasattr(verify_response, "request_details") else None,
+                                                "status_code": verify_response.status_code,
+                                                "response_headers": verify_response.response_details["headers"] if hasattr(verify_response, "response_details") else None,
+                                                "response_body": verify_response.response_details["body"] if hasattr(verify_response, "response_details") else None,
+                                                "field_value": verify_data.get(field)
+                                            }
+                                        }
+                                        
                                         self.add_finding(
                                             vulnerability="Mass Assignment",
                                             severity="HIGH",
                                             endpoint=endpoint,
                                             details=f"The API allows setting the sensitive field '{field}' via mass assignment, which could lead to privilege escalation.",
-                                            evidence={
-                                                "request": {
-                                                    "method": method,
-                                                    "endpoint": endpoint,
-                                                    "payload": payload
-                                                },
-                                                "response": {
-                                                    "status_code": response.status_code,
-                                                    "body": response.text[:1000]  # Limit response size
-                                                },
-                                                "verification": {
-                                                    "endpoint": verify_endpoint,
-                                                    "status_code": verify_response.status_code,
-                                                    "field_value": verify_data.get(field)
-                                                }
-                                            },
+                                            evidence=evidence,
                                             remediation="Implement proper server-side filtering of request parameters to prevent setting of sensitive fields."
                                         )
                                 except (ValueError, KeyError) as e:
@@ -252,22 +493,28 @@ class Scanner(BaseScanner):
                             self.logger.error(f"Error verifying field: {str(e)}")
                     else:
                         # Can't verify, but the request was successful
+                        # Create detailed evidence with full request and response information
+                        evidence = {
+                            "request": {
+                                "method": method,
+                                "endpoint": endpoint,
+                                "url": response.request_details["url"] if hasattr(response, "request_details") else None,
+                                "headers": response.request_details["headers"] if hasattr(response, "request_details") else None,
+                                "payload": payload
+                            },
+                            "response": {
+                                "status_code": response.status_code,
+                                "headers": response.response_details["headers"] if hasattr(response, "response_details") else None,
+                                "body": response.response_details["body"] if hasattr(response, "response_details") else response.text[:1000]
+                            }
+                        }
+                        
                         self.add_finding(
                             vulnerability="Potential Mass Assignment",
                             severity="MEDIUM",
                             endpoint=endpoint,
                             details=f"The API accepted a request with the sensitive field '{field}' without error, which might indicate a mass assignment vulnerability.",
-                            evidence={
-                                "request": {
-                                    "method": method,
-                                    "endpoint": endpoint,
-                                    "payload": payload
-                                },
-                                "response": {
-                                    "status_code": response.status_code,
-                                    "body": response.text[:1000]  # Limit response size
-                                }
-                            },
+                            evidence=evidence,
                             remediation="Implement proper server-side filtering of request parameters to prevent setting of sensitive fields."
                         )
             
@@ -338,26 +585,39 @@ class Scanner(BaseScanner):
                                     # Check if admin privileges were set
                                     if user.get("admin") is True:
                                         # Admin privileges were successfully set - add finding
+                                        # Create detailed evidence with full request and response information
+                                        evidence = {
+                                            "request": {
+                                                "method": "POST",
+                                                "endpoint": register_endpoint,
+                                                "url": response.request_details["url"] if hasattr(response, "request_details") else None,
+                                                "headers": response.request_details["headers"] if hasattr(response, "request_details") else None,
+                                                "payload": register_payload
+                                            },
+                                            "response": {
+                                                "status_code": response.status_code,
+                                                "headers": response.response_details["headers"] if hasattr(response, "response_details") else None,
+                                                "body": response.response_details["body"] if hasattr(response, "response_details") else response.text[:1000]
+                                            },
+                                            "verification": {
+                                                "method": "GET",
+                                                "endpoint": debug_endpoint,
+                                                "url": verify_response.request_details["url"] if hasattr(verify_response, "request_details") else None,
+                                                "headers": verify_response.request_details["headers"] if hasattr(verify_response, "request_details") else None,
+                                                "response_code": verify_response.status_code,
+                                                "response_headers": verify_response.response_details["headers"] if hasattr(verify_response, "response_details") else None,
+                                                "response_body": verify_response.response_details["body"] if hasattr(verify_response, "response_details") else None,
+                                                "user": username,
+                                                "admin_status": user.get("admin")
+                                            }
+                                        }
+                                        
                                         self.add_finding(
                                             vulnerability="Mass Assignment During Registration",
                                             severity="CRITICAL",
                                             endpoint=register_endpoint,
                                             details=f"The API allows setting admin privileges during user registration via mass assignment.",
-                                            evidence={
-                                                "request": {
-                                                    "method": "POST",
-                                                    "endpoint": register_endpoint,
-                                                    "payload": register_payload
-                                                },
-                                                "response": {
-                                                    "status_code": response.status_code,
-                                                    "body": response.text[:1000]  # Limit response size
-                                                },
-                                                "verification": {
-                                                    "user": username,
-                                                    "admin_status": user.get("admin")
-                                                }
-                                            },
+                                            evidence=evidence,
                                             remediation="Implement proper server-side filtering of request parameters during registration to prevent setting of sensitive fields like 'admin'."
                                         )
                                         return
@@ -489,12 +749,165 @@ class Scanner(BaseScanner):
         endpoints = openapi_data["endpoints"]
         self.logger.info(f"Found {len(endpoints)} endpoints in OpenAPI specification")
         
-        # Use the utility function to find endpoints by purpose
-        self.register_endpoint = find_endpoint_by_purpose(endpoints, "register", self.register_endpoint)
-        self.debug_endpoint = find_endpoint_by_purpose(endpoints, "debug", self.debug_endpoint)
-        self.create_endpoint = find_endpoint_by_purpose(endpoints, "create_user", self.create_endpoint)
-        self.update_endpoint = find_endpoint_by_purpose(endpoints, "update_user", self.update_endpoint)
-        self.get_endpoint = find_endpoint_by_purpose(endpoints, "get_user", self.get_endpoint)
+        # Find registration endpoints based on path patterns and request body fields
+        registration_patterns = ["register", "signup", "sign-up", "create_user", "users", "auth/sign-up"]
+        create_user_patterns = ["users", "create_user", "user/create", "api/users"]
+        update_user_patterns = ["users", "update_user", "user/update", "api/users"]
+        get_user_patterns = ["users", "get_user", "user/get", "api/users"]
+        debug_patterns = ["debug", "_debug", "test"]
+        
+        # Score each endpoint based on how likely it is to be a registration, create, update, or get endpoint
+        register_candidates = []
+        create_candidates = []
+        update_candidates = []
+        get_candidates = []
+        debug_candidates = []
+        
+        for endpoint in endpoints:
+            path = endpoint.get("path", "")
+            method = endpoint.get("method", "").upper()
+            summary = endpoint.get("summary", "").lower()
+            description = endpoint.get("description", "").lower()
+            operation_id = endpoint.get("operationId", "").lower()
+            
+            # Check for debug endpoints
+            if any(pattern in path.lower() for pattern in debug_patterns) or any(pattern in summary for pattern in debug_patterns) or any(pattern in description for pattern in debug_patterns):
+                debug_candidates.append((endpoint, 10))
+                continue
+            
+            # Registration endpoint scoring
+            if method == "POST":
+                register_score = 0
+                for pattern in registration_patterns:
+                    if pattern in path.lower():
+                        register_score += 5
+                    if pattern in summary or pattern in description or pattern in operation_id:
+                        register_score += 3
+                
+                # Check request body for username/email/password fields
+                request_body = endpoint.get("requestBody", {})
+                if request_body:
+                    properties = self._extract_request_properties(request_body)
+                    if properties:
+                        username_found = any(prop for prop in properties if "user" in prop.lower() or "name" in prop.lower())
+                        email_found = any(prop for prop in properties if "email" in prop.lower())
+                        password_found = any(prop for prop in properties if "pass" in prop.lower())
+                        
+                        if username_found:
+                            register_score += 2
+                        if email_found:
+                            register_score += 2
+                        if password_found:
+                            register_score += 2
+                            
+                if register_score > 0:
+                    register_candidates.append((endpoint, register_score))
+            
+            # Create user endpoint scoring
+            if method == "POST":
+                create_score = 0
+                for pattern in create_user_patterns:
+                    if pattern in path.lower():
+                        create_score += 5
+                    if pattern in summary or pattern in description or pattern in operation_id:
+                        create_score += 3
+                
+                # Check if path doesn't contain parameters (like {id})
+                if "{" not in path and "}" not in path:
+                    create_score += 2
+                    
+                if create_score > 0:
+                    create_candidates.append((endpoint, create_score))
+            
+            # Update user endpoint scoring
+            if method in ["PUT", "PATCH"]:
+                update_score = 0
+                for pattern in update_user_patterns:
+                    if pattern in path.lower():
+                        update_score += 5
+                    if pattern in summary or pattern in description or pattern in operation_id:
+                        update_score += 3
+                
+                # Check if path contains parameters (like {id})
+                if "{" in path and "}" in path:
+                    update_score += 4
+                    
+                if update_score > 0:
+                    update_candidates.append((endpoint, update_score))
+            
+            # Get user endpoint scoring
+            if method == "GET":
+                get_score = 0
+                for pattern in get_user_patterns:
+                    if pattern in path.lower():
+                        get_score += 5
+                    if pattern in summary or pattern in description or pattern in operation_id:
+                        get_score += 3
+                
+                # Check if path contains parameters (like {id})
+                if "{" in path and "}" in path:
+                    get_score += 4
+                    
+                if get_score > 0:
+                    get_candidates.append((endpoint, get_score))
+        
+        # Select the highest scoring candidates
+        if register_candidates:
+            register_candidates.sort(key=lambda x: x[1], reverse=True)
+            best_register = register_candidates[0][0]
+            self.register_endpoint = best_register.get("path")
+            self.logger.info(f"Found registration endpoint: {self.register_endpoint}")
+        
+        if debug_candidates:
+            debug_candidates.sort(key=lambda x: x[1], reverse=True)
+            best_debug = debug_candidates[0][0]
+            self.debug_endpoint = best_debug.get("path")
+            self.logger.info(f"Found debug endpoint: {self.debug_endpoint}")
+        
+        if create_candidates:
+            create_candidates.sort(key=lambda x: x[1], reverse=True)
+            best_create = create_candidates[0][0]
+            self.create_endpoint = best_create.get("path")
+            self.logger.info(f"Found create user endpoint: {self.create_endpoint}")
+        
+        if update_candidates:
+            update_candidates.sort(key=lambda x: x[1], reverse=True)
+            best_update = update_candidates[0][0]
+            self.update_endpoint = best_update.get("path")
+            self.logger.info(f"Found update user endpoint: {self.update_endpoint}")
+        
+        if get_candidates:
+            get_candidates.sort(key=lambda x: x[1], reverse=True)
+            best_get = get_candidates[0][0]
+            self.get_endpoint = best_get.get("path")
+            self.logger.info(f"Found get user endpoint: {self.get_endpoint}")
+    
+    def _extract_request_properties(self, request_body: Dict[str, Any]) -> List[str]:
+        """
+        Extract property names from a request body schema.
+        
+        Args:
+            request_body: Request body object from OpenAPI spec
+            
+        Returns:
+            List of property names
+        """
+        properties = []
+        
+        # Handle different OpenAPI structures
+        if "content" in request_body:
+            content = request_body.get("content", {})
+            for content_type, content_schema in content.items():
+                if "schema" in content_schema:
+                    schema = content_schema["schema"]
+                    if "properties" in schema:
+                        properties.extend(schema["properties"].keys())
+        elif "schema" in request_body:
+            schema = request_body["schema"]
+            if "properties" in schema:
+                properties.extend(schema["properties"].keys())
+        
+        return properties
     
     def _test_create_update_flow(self) -> None:
         """Test the create and update flow for mass assignment vulnerabilities."""
@@ -504,38 +917,81 @@ class Scanner(BaseScanner):
         user_id = None
         create_payload = self.create_user_payload.copy()
         
-        try:
-            response = self._make_request(
-                method="POST",
-                endpoint=self.create_endpoint,
-                json_data=create_payload
-            )
-            
-            if response.status_code in [200, 201]:
-                self.logger.info("Successfully created test user")
+        # Adapt field names for Snorefox API
+        if "username" in create_payload and "email" not in create_payload:
+            create_payload["email"] = create_payload["username"] + "@example.com"
+        
+        # Try alternative endpoints if the default one fails
+        endpoints_to_try = [
+            self.create_endpoint,
+            "/users",
+            "/api/users",
+            "/api/v1/users",
+            "/auth/sign-up",  # Snorefox specific
+            "/api/v1/auth/sign-up"  # Snorefox specific with prefix
+        ]
+        
+        success = False
+        for endpoint in endpoints_to_try:
+            try:
+                self.logger.info(f"Attempting to create user with endpoint: {endpoint}")
+                response = self._make_request(
+                    method="POST",
+                    endpoint=endpoint,
+                    json_data=create_payload
+                )
                 
-                # Try to get the user ID from the response
-                try:
-                    data = response.json()
-                    user_id = data.get(self.id_field)
-                    if not user_id:
-                        # Try common variations
-                        for field in ["id", "userId", "user_id", "_id"]:
+                if response.status_code in [200, 201, 204]:
+                    self.logger.info(f"Successfully created test user with endpoint: {endpoint}")
+                    success = True
+                    
+                    # Try to get the user ID from the response
+                    try:
+                        data = response.json()
+                        # Try common ID field variations
+                        for field in [self.id_field, "id", "userId", "user_id", "_id", "uuid"]:
                             if field in data:
                                 user_id = data[field]
+                                self.logger.info(f"Found user ID in field: {field}")
                                 break
+                        
+                        # If we couldn't find the ID directly, check if it's nested
+                        if not user_id and "user" in data and isinstance(data["user"], dict):
+                            user_data = data["user"]
+                            for field in [self.id_field, "id", "userId", "user_id", "_id", "uuid"]:
+                                if field in user_data:
+                                    user_id = user_data[field]
+                                    self.logger.info(f"Found user ID in nested user object, field: {field}")
+                                    break
+                        
+                        # If we still couldn't find an ID, try to use the username/email as identifier
+                        if not user_id:
+                            # For APIs that use email or username as the identifier
+                            if "email" in create_payload:
+                                user_id = create_payload["email"]
+                                self.logger.info("Using email as user identifier")
+                            elif "username" in create_payload:
+                                user_id = create_payload["username"]
+                                self.logger.info("Using username as user identifier")
+                            else:
+                                self.logger.warn("Could not determine user identifier")
+                                continue
+                    except Exception as e:
+                        self.logger.warn(f"Error parsing user creation response: {str(e)}")
+                        continue
                     
-                    if not user_id:
-                        self.logger.warn(f"Could not find user ID in response: {data}")
-                        return
-                except (ValueError, KeyError) as e:
-                    self.logger.warn(f"Error parsing user creation response: {str(e)}")
-                    return
-            else:
-                self.logger.warn(f"Failed to create test user, status code: {response.status_code}")
-                return
-        except Exception as e:
-            self.logger.error(f"Error creating test user: {str(e)}")
+                    # If we got a user ID, break out of the loop
+                    if user_id:
+                        # Update the create endpoint to the one that worked
+                        self.create_endpoint = endpoint
+                        break
+                else:
+                    self.logger.warn(f"Failed to create user with endpoint {endpoint}, status code: {response.status_code}")
+            except Exception as e:
+                self.logger.error(f"Error creating user with endpoint {endpoint}: {str(e)}")
+        
+        if not success or not user_id:
+            self.logger.warn("Failed to create test user with any endpoint, skipping mass assignment test")
             return
         
         # Step 2: Try to update the user with sensitive fields

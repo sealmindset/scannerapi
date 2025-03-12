@@ -4,13 +4,20 @@ Unrestricted Account Creation and Authorization Scanner Module.
 This module tests for vulnerabilities related to unrestricted account creation,
 unauthorized password changes, and other authorization issues that can lead to 
 account enumeration, privilege escalation, and unauthorized access.
+
+Enhanced to detect vulnerabilities across different API structures, including:
+- RESTful APIs with /auth/sign-up and /auth/sign-in patterns (like Snorefox API)
+- Traditional APIs with /users or /register endpoints
+- Mobile-specific API endpoints
+- APIs with different field naming conventions
 """
 
 import json
 import time
 import random
 import string
-from typing import Dict, List, Any, Optional, Tuple
+import re
+from typing import Dict, List, Any, Optional, Tuple, Set, Union
 
 from core.base_scanner import BaseScanner
 from core.openapi import find_endpoint_by_purpose
@@ -37,8 +44,16 @@ class Scanner(BaseScanner):
             self.endpoint = endpoints[0]
             
         self.method = config.get("method", "POST")
-        self.test_count = config.get("test_count", 5)
-        self.test_delay = config.get("test_delay", 1.0)
+        
+        # Enhanced test configuration with higher default values for better detection
+        self.test_count = config.get("test_count", 15)  # Increased from 5 to 15 for better detection
+        self.test_delay = config.get("test_delay", 0.5)  # Reduced from 1.0 to 0.5 for faster testing
+        
+        # Aggressive test configuration for rate limiting detection
+        self.aggressive_test_count = config.get("aggressive_test_count", 30)  # For aggressive testing
+        self.aggressive_test_delay = config.get("aggressive_test_delay", 0.1)  # Very short delay for aggressive testing
+        
+        # Field names with better defaults
         self.username_field = config.get("username_field", "username")
         self.email_field = config.get("email_field", "email")
         self.password_field = config.get("password_field", "password")
@@ -46,17 +61,20 @@ class Scanner(BaseScanner):
         # Additional fields to include in the request
         self.additional_fields = config.get("additional_fields", {})
         
-        # Success indicators
-        self.success_status_codes = config.get("success_status_codes", [200, 201])
+        # Success indicators with expanded defaults
+        self.success_status_codes = config.get("success_status_codes", [200, 201, 202, 204])
         self.success_response_contains = config.get("success_response_contains", [])
         
-        # Validation indicators
-        self.validation_status_codes = config.get("validation_status_codes", [400, 422])
+        # Validation indicators with expanded defaults
+        self.validation_status_codes = config.get("validation_status_codes", [400, 422, 409, 403])
         self.validation_response_contains = config.get("validation_response_contains", [])
         
-        # Rate limiting indicators
-        self.rate_limit_status_codes = config.get("rate_limit_status_codes", [429])
-        self.rate_limit_response_contains = config.get("rate_limit_response_contains", [])
+        # Rate limiting indicators with expanded detection patterns
+        self.rate_limit_status_codes = config.get("rate_limit_status_codes", [429, 403, 503])
+        self.rate_limit_response_contains = config.get("rate_limit_response_contains", [
+            "rate limit", "too many requests", "try again later", "throttled", 
+            "slow down", "too many attempts", "too frequent", "wait", "limit exceeded"
+        ])
         
         # Unauthorized password change configuration
         self.debug_endpoint = config.get("debug_endpoint", "/users/v1/_debug")
@@ -73,20 +91,27 @@ class Scanner(BaseScanner):
         self.logger.info(f"Using register endpoint: {self.register_endpoint}")
         self.logger.info(f"Using login endpoint: {self.login_endpoint}")
         self.logger.info(f"Using password change endpoint: {self.password_change_endpoint}")
+        
+        # Admin and auth fields
         self.admin_field = config.get("admin_field", "admin")
         self.auth_token_field = config.get("auth_token_field", "auth_token")
         
-        # Test user credentials
+        # Test user credentials with better randomization
         timestamp = int(time.time())
-        random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+        random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
         self.test_username = config.get("test_username", f"test_user_{timestamp}_{random_suffix}")
         self.test_email = config.get("test_email", f"{self.test_username}@example.com")
-        self.test_password = config.get("test_password", f"Test@{timestamp}")
-        self.new_password = config.get("new_password", f"NewPass@{timestamp}")
+        
+        # More complex password that meets common requirements
+        self.test_password = config.get("test_password", f"Test@{timestamp}#{random_suffix}")
+        self.new_password = config.get("new_password", f"NewPass@{timestamp}#{random_suffix}")
         
         # Debug and simulation mode
         self.debug = config.get("debug", False)
         self.simulate_vulnerabilities = config.get("simulate_vulnerabilities", False)
+        
+        # Track successful account creations for later use
+        self.created_accounts = []
         
         if self.debug:
             self.logger.info("Debug mode enabled")
@@ -109,28 +134,187 @@ class Scanner(BaseScanner):
         endpoints = target.get("openapi_endpoints", [])
         self.logger.info(f"Found {len(endpoints)} endpoints in OpenAPI specification")
         
-        # Use the enhanced utility function to find endpoints by purpose with improved scoring
-        # For account creation, we need to look for both create_user and register endpoints
-        self.endpoint = find_endpoint_by_purpose(endpoints, "create_user", self.endpoint)
-        self.register_endpoint = find_endpoint_by_purpose(endpoints, "register", self.register_endpoint)
+        # Enhanced endpoint detection for account creation/registration
+        # Look for both standard patterns and RESTful API patterns like Snorefox
+        register_patterns = [
+            "create_user", "register", "signup", "sign-up", "sign_up", 
+            "auth/sign-up", "auth/signup", "auth/register", "users/create",
+            "account/create", "account/register", "new-user", "new-account"
+        ]
         
-        # If we didn't find a specific create_user endpoint but found a register endpoint,
-        # use the register endpoint for both
-        if self.endpoint == "/api/users" and self.register_endpoint != "/users/v1/register":
-            self.endpoint = self.register_endpoint
-            self.logger.info(f"Using register endpoint as create_user endpoint: {self.endpoint}")
+        # Find registration endpoint with improved pattern matching
+        best_register_endpoint = self.register_endpoint
+        best_score = 0
         
-        # Find login endpoint for authentication testing
-        self.login_endpoint = find_endpoint_by_purpose(endpoints, "login", self.login_endpoint)
+        for endpoint in endpoints:
+            path = endpoint.get("path", "")
+            method = endpoint.get("method", "").upper()
+            description = endpoint.get("description", "").lower()
+            summary = endpoint.get("summary", "").lower()
+            operation_id = endpoint.get("operationId", "").lower()
+            
+            # Only consider POST methods for registration
+            if method != "POST":
+                continue
+                
+            score = 0
+            # Check path for registration patterns
+            for pattern in register_patterns:
+                if pattern in path.lower():
+                    score += 3
+                    
+            # Check description, summary, and operationId
+            for pattern in ["register", "signup", "sign up", "sign-up", "create user", "create account"]:
+                if pattern in description:
+                    score += 2
+                if pattern in summary:
+                    score += 2
+                if pattern in operation_id:
+                    score += 2
+            
+            # Check for request body parameters that indicate registration
+            if "requestBody" in endpoint:
+                schema = endpoint.get("requestBody", {}).get("content", {}).get("application/json", {}).get("schema", {})
+                properties = schema.get("properties", {})
+                
+                # Check for common registration fields
+                for field in ["username", "email", "password", "name", "firstName", "lastName"]:
+                    if field in properties:
+                        score += 1
+                        
+                # If we have at least 3 registration-related fields, this is likely a registration endpoint
+                if score >= 3:
+                    score += 3
+            
+            if score > best_score:
+                best_score = score
+                best_register_endpoint = path
         
-        # Find password change endpoint
-        self.password_change_endpoint = find_endpoint_by_purpose(endpoints, "password_change", self.password_change_endpoint)
+        # Update endpoints if we found better matches
+        if best_score > 0:
+            self.register_endpoint = best_register_endpoint
+            self.endpoint = best_register_endpoint  # Use the same endpoint for account creation
+            self.logger.info(f"Found registration endpoint with score {best_score}: {best_register_endpoint}")
+        
+        # Enhanced login endpoint detection
+        login_patterns = [
+            "login", "signin", "sign-in", "sign_in", "auth", "authenticate",
+            "auth/sign-in", "auth/login", "session", "token"
+        ]
+        
+        best_login_endpoint = self.login_endpoint
+        best_score = 0
+        
+        for endpoint in endpoints:
+            path = endpoint.get("path", "")
+            method = endpoint.get("method", "").upper()
+            description = endpoint.get("description", "").lower()
+            summary = endpoint.get("summary", "").lower()
+            operation_id = endpoint.get("operationId", "").lower()
+            
+            # Only consider POST methods for login
+            if method != "POST":
+                continue
+                
+            score = 0
+            # Check path for login patterns
+            for pattern in login_patterns:
+                if pattern in path.lower():
+                    score += 3
+                    
+            # Check description, summary, and operationId
+            for pattern in ["login", "signin", "sign in", "sign-in", "authenticate", "auth"]:
+                if pattern in description:
+                    score += 2
+                if pattern in summary:
+                    score += 2
+                if pattern in operation_id:
+                    score += 2
+            
+            # Check for request body parameters that indicate login
+            if "requestBody" in endpoint:
+                schema = endpoint.get("requestBody", {}).get("content", {}).get("application/json", {}).get("schema", {})
+                properties = schema.get("properties", {})
+                
+                # Check for common login fields
+                login_fields = ["username", "email", "password", "token"]
+                for field in login_fields:
+                    if field in properties:
+                        score += 1
+                
+                # If we have username/email and password, this is likely a login endpoint
+                if ("username" in properties or "email" in properties) and "password" in properties:
+                    score += 3
+            
+            if score > best_score:
+                best_score = score
+                best_login_endpoint = path
+        
+        if best_score > 0:
+            self.login_endpoint = best_login_endpoint
+            self.logger.info(f"Found login endpoint with score {best_score}: {best_login_endpoint}")
+        
+        # Find password change endpoint with improved detection
+        password_patterns = [
+            "password", "change-password", "reset-password", "update-password",
+            "users/*/password", "auth/password", "me/password", "users/me/password"
+        ]
+        
+        best_password_endpoint = self.password_change_endpoint
+        best_score = 0
+        
+        for endpoint in endpoints:
+            path = endpoint.get("path", "")
+            method = endpoint.get("method", "").upper()
+            
+            # Password change endpoints are typically PUT or POST
+            if method not in ["PUT", "POST", "PATCH"]:
+                continue
+                
+            score = 0
+            # Check path for password patterns
+            for pattern in password_patterns:
+                if pattern in path.lower():
+                    score += 3
+            
+            if score > best_score:
+                best_score = score
+                best_password_endpoint = path
+        
+        if best_score > 0:
+            self.password_change_endpoint = best_password_endpoint
+            self.logger.info(f"Found password change endpoint with score {best_score}: {best_password_endpoint}")
         
         # Find user info endpoint (often used to verify successful account creation)
-        self.user_info_endpoint = find_endpoint_by_purpose(endpoints, "user_info", "/users/v1/me")
+        user_info_patterns = [
+            "me", "profile", "user-info", "userinfo", "current-user",
+            "users/me", "auth/me", "user/profile", "account/profile"
+        ]
         
-        # Find debug endpoint
-        self.debug_endpoint = find_endpoint_by_purpose(endpoints, "debug", self.debug_endpoint)
+        best_user_info_endpoint = "/users/v1/me"  # Default
+        best_score = 0
+        
+        for endpoint in endpoints:
+            path = endpoint.get("path", "")
+            method = endpoint.get("method", "").upper()
+            
+            # User info endpoints are typically GET
+            if method != "GET":
+                continue
+                
+            score = 0
+            # Check path for user info patterns
+            for pattern in user_info_patterns:
+                if pattern in path.lower():
+                    score += 3
+            
+            if score > best_score:
+                best_score = score
+                best_user_info_endpoint = path
+        
+        if best_score > 0:
+            self.user_info_endpoint = best_user_info_endpoint
+            self.logger.info(f"Found user info endpoint with score {best_score}: {best_user_info_endpoint}")
         
         # Try to find admin endpoints that might be vulnerable to privilege escalation
         admin_candidates = []
@@ -139,7 +323,7 @@ class Scanner(BaseScanner):
             method = endpoint.get("method", "").upper()
             
             # Look for admin-related patterns in the path
-            admin_patterns = ["/admin", "/manage", "/dashboard", "/control"]
+            admin_patterns = ["/admin", "/manage", "/dashboard", "/control", "/settings"]
             if any(pattern in path.lower() for pattern in admin_patterns):
                 admin_candidates.append(path)
                 
@@ -155,18 +339,9 @@ class Scanner(BaseScanner):
             self.logger.info(f"Found {len(self.admin_endpoints)} potential admin endpoints")
         else:
             self.admin_endpoints = []
-            
-        # Look for mobile-specific endpoints
-        if "/mobile/" in self.endpoint or "/api/v1/mobile/" in self.endpoint:
-            self.logger.info("Detected mobile API endpoint pattern")
-            # Adjust expectations for mobile APIs which often have different patterns
-            # Mobile APIs often use different field names or structures
-            if not self.config.get("mobile_fields_set", False):
-                self.username_field = self.config.get("mobile_username_field", "email")
-                self.email_field = self.config.get("mobile_email_field", "email")
-                self.password_field = self.config.get("mobile_password_field", "password")
-                self.config["mobile_fields_set"] = True
-                self.logger.info(f"Adjusted field names for mobile API: username={self.username_field}, email={self.email_field}")
+        
+        # Detect API field naming conventions by analyzing request bodies
+        self._detect_field_naming_conventions(endpoints)
         
         # Log the resolved endpoints
         self.logger.info(f"Using endpoint for account creation: {self.endpoint}")
@@ -174,7 +349,82 @@ class Scanner(BaseScanner):
         self.logger.info(f"Using login endpoint: {self.login_endpoint}")
         self.logger.info(f"Using password change endpoint: {self.password_change_endpoint}")
         self.logger.info(f"Using user info endpoint: {self.user_info_endpoint if hasattr(self, 'user_info_endpoint') else 'Not found'}")
-        self.login_endpoint = find_endpoint_by_purpose(endpoints, "login", self.login_endpoint)
+    
+    def _detect_field_naming_conventions(self, endpoints: List[Dict[str, Any]]) -> None:
+        """
+        Detect API field naming conventions by analyzing request bodies.
+        
+        Args:
+            endpoints: List of endpoints from OpenAPI specification
+        """
+        # Skip if already configured
+        if self.config.get("field_names_detected", False):
+            return
+            
+        # Collect all property names from request bodies
+        all_properties = {}
+        
+        for endpoint in endpoints:
+            if "requestBody" not in endpoint:
+                continue
+                
+            schema = endpoint.get("requestBody", {}).get("content", {}).get("application/json", {}).get("schema", {})
+            properties = schema.get("properties", {})
+            
+            for prop_name, prop_details in properties.items():
+                prop_type = prop_details.get("type", "")
+                prop_description = prop_details.get("description", "").lower()
+                
+                if prop_name not in all_properties:
+                    all_properties[prop_name] = {
+                        "count": 0,
+                        "types": set(),
+                        "descriptions": []
+                    }
+                
+                all_properties[prop_name]["count"] += 1
+                all_properties[prop_name]["types"].add(prop_type)
+                if prop_description:
+                    all_properties[prop_name]["descriptions"].append(prop_description)
+        
+        # Detect username field
+        username_candidates = [
+            "username", "userName", "user_name", "login", "loginId", "login_id",
+            "userId", "user_id", "email", "emailAddress", "email_address"
+        ]
+        
+        for field in username_candidates:
+            if field in all_properties:
+                self.username_field = field
+                self.logger.info(f"Detected username field: {field}")
+                break
+        
+        # Detect email field
+        email_candidates = [
+            "email", "emailAddress", "email_address", "userEmail", "user_email",
+            "mail", "contact_email", "contactEmail"
+        ]
+        
+        for field in email_candidates:
+            if field in all_properties:
+                self.email_field = field
+                self.logger.info(f"Detected email field: {field}")
+                break
+        
+        # Detect password field
+        password_candidates = [
+            "password", "passwd", "pass", "userPassword", "user_password",
+            "pwd", "secret", "credentials"
+        ]
+        
+        for field in password_candidates:
+            if field in all_properties:
+                self.password_field = field
+                self.logger.info(f"Detected password field: {field}")
+                break
+        
+        # Mark as detected
+        self.config["field_names_detected"] = True
         self.password_change_endpoint = find_endpoint_by_purpose(endpoints, "password_change", self.password_change_endpoint)
     
     def run(self) -> List[Dict[str, Any]]:
@@ -325,49 +575,167 @@ class Scanner(BaseScanner):
         """Test for account creation without proper validation."""
         self.logger.info("Testing account creation without proper validation")
         
-        # Test cases for invalid input
+        # Generate a unique timestamp for this test run
+        timestamp = int(time.time())
+        
+        # Enhanced test cases for invalid input with more comprehensive tests
         test_cases = [
+            # Username validation tests
             {
                 "name": "Empty username",
+                "category": "username_validation",
+                "severity": "HIGH",
                 "payload": {
                     self.username_field: "",
-                    self.email_field: "test@example.com",
-                    self.password_field: "Test@123456"
+                    self.email_field: f"valid{timestamp}@example.com",
+                    self.password_field: f"Valid@Password{timestamp}"
                 }
             },
             {
-                "name": "Invalid email format",
+                "name": "Very short username",
+                "category": "username_validation",
+                "severity": "MEDIUM",
                 "payload": {
-                    self.username_field: f"test_user_{int(time.time())}",
-                    self.email_field: "invalid-email",
-                    self.password_field: "Test@123456"
-                }
-            },
-            {
-                "name": "Short password",
-                "payload": {
-                    self.username_field: f"test_user_{int(time.time())}",
-                    self.email_field: f"test{int(time.time())}@example.com",
-                    self.password_field: "short"
+                    self.username_field: "a",
+                    self.email_field: f"valid{timestamp}@example.com",
+                    self.password_field: f"Valid@Password{timestamp}"
                 }
             },
             {
                 "name": "SQL injection in username",
+                "category": "injection",
+                "severity": "CRITICAL",
                 "payload": {
                     self.username_field: "' OR 1=1 --",
-                    self.email_field: f"sqli{int(time.time())}@example.com",
-                    self.password_field: "Test@123456"
+                    self.email_field: f"sqli{timestamp}@example.com",
+                    self.password_field: f"Valid@Password{timestamp}"
+                }
+            },
+            {
+                "name": "More complex SQL injection in username",
+                "category": "injection",
+                "severity": "CRITICAL",
+                "payload": {
+                    self.username_field: "admin'); DROP TABLE users; --",
+                    self.email_field: f"sqli2{timestamp}@example.com",
+                    self.password_field: f"Valid@Password{timestamp}"
                 }
             },
             {
                 "name": "XSS in username",
+                "category": "injection",
+                "severity": "HIGH",
                 "payload": {
                     self.username_field: "<script>alert(1)</script>",
-                    self.email_field: f"xss{int(time.time())}@example.com",
-                    self.password_field: "Test@123456"
+                    self.email_field: f"xss{timestamp}@example.com",
+                    self.password_field: f"Valid@Password{timestamp}"
                 }
+            },
+            {
+                "name": "More complex XSS in username",
+                "category": "injection",
+                "severity": "HIGH",
+                "payload": {
+                    self.username_field: "<img src=x onerror=alert('XSS')>",
+                    self.email_field: f"xss2{timestamp}@example.com",
+                    self.password_field: f"Valid@Password{timestamp}"
+                }
+            },
+            
+            # Email validation tests
+            {
+                "name": "Empty email",
+                "category": "email_validation",
+                "severity": "HIGH",
+                "payload": {
+                    self.username_field: f"valid_user_{timestamp}",
+                    self.email_field: "",
+                    self.password_field: f"Valid@Password{timestamp}"
+                }
+            },
+            {
+                "name": "Invalid email format (no @)",
+                "category": "email_validation",
+                "severity": "MEDIUM",
+                "payload": {
+                    self.username_field: f"valid_user_{timestamp}_2",
+                    self.email_field: "invalid-email",
+                    self.password_field: f"Valid@Password{timestamp}"
+                }
+            },
+            {
+                "name": "Invalid email format (no domain)",
+                "category": "email_validation",
+                "severity": "MEDIUM",
+                "payload": {
+                    self.username_field: f"valid_user_{timestamp}_3",
+                    self.email_field: "user@",
+                    self.password_field: f"Valid@Password{timestamp}"
+                }
+            },
+            {
+                "name": "SQL injection in email",
+                "category": "injection",
+                "severity": "CRITICAL",
+                "payload": {
+                    self.username_field: f"valid_user_{timestamp}_4",
+                    self.email_field: "' OR 1=1 --@example.com",
+                    self.password_field: f"Valid@Password{timestamp}"
+                }
+            },
+            
+            # Password validation tests
+            {
+                "name": "Empty password",
+                "category": "password_validation",
+                "severity": "HIGH",
+                "payload": {
+                    self.username_field: f"valid_user_{timestamp}_5",
+                    self.email_field: f"valid{timestamp}_5@example.com",
+                    self.password_field: ""
+                }
+            },
+            {
+                "name": "Short password",
+                "category": "password_validation",
+                "severity": "MEDIUM",
+                "payload": {
+                    self.username_field: f"valid_user_{timestamp}_6",
+                    self.email_field: f"valid{timestamp}_6@example.com",
+                    self.password_field: "short"
+                }
+            },
+            {
+                "name": "Common password",
+                "category": "password_validation",
+                "severity": "MEDIUM",
+                "payload": {
+                    self.username_field: f"valid_user_{timestamp}_7",
+                    self.email_field: f"valid{timestamp}_7@example.com",
+                    self.password_field: "password123"
+                }
+            },
+            {
+                "name": "Password same as username",
+                "category": "password_validation",
+                "severity": "MEDIUM",
+                "payload": {}
+                # Will be set dynamically below
             }
         ]
+        
+        # Set the dynamic payload for "Password same as username" test
+        same_username = f"valid_user_{timestamp}_8"
+        for test_case in test_cases:
+            if test_case["name"] == "Password same as username":
+                test_case["payload"] = {
+                    self.username_field: same_username,
+                    self.email_field: f"valid{timestamp}_8@example.com",
+                    self.password_field: same_username
+                }
+        
+        # Track findings by category to avoid duplicate reports
+        findings_by_category = {}
         
         for test_case in test_cases:
             self.logger.info(f"Testing: {test_case['name']}")
@@ -383,24 +751,63 @@ class Scanner(BaseScanner):
                     json_data=payload
                 )
                 
+                # Record response details for evidence
+                response_details = {
+                    "status_code": response.status_code,
+                    "headers": dict(response.headers),
+                }
+                
+                # Truncate response text to avoid excessive data
+                if len(response.text) > 500:
+                    response_details["body"] = response.text[:500] + "..."
+                else:
+                    response_details["body"] = response.text
+                
                 # Check if validation is working
                 if response.status_code in self.success_status_codes:
-                    # Account was created with invalid input
-                    self.add_finding(
-                        vulnerability="Unrestricted Account Creation - Lack of Input Validation",
-                        severity="HIGH",
-                        endpoint=self.endpoint,
-                        details=f"The API allows account creation with invalid input: {test_case['name']}",
-                        evidence={
-                            "request": payload,
-                            "response": {
-                                "status_code": response.status_code,
-                                "headers": dict(response.headers),
-                                "body": response.text[:1000]  # Limit response size
-                            }
-                        },
-                        remediation="Implement proper input validation for all user registration fields."
-                    )
+                    # Account was created with invalid input - this is a vulnerability
+                    category = test_case.get("category", "general_validation")
+                    severity = test_case.get("severity", "HIGH")
+                    
+                    # Only add one finding per category to avoid report bloat
+                    if category not in findings_by_category:
+                        finding_title = f"Unrestricted Account Creation - Lack of {category.replace('_', ' ').title()}"
+                        
+                        # Customize details based on category
+                        if "injection" in category:
+                            details = f"The API allows account creation with potential injection attacks in the {test_case['name'].split(' in ')[1]} field. This could lead to SQL injection or XSS vulnerabilities."
+                            remediation = "Implement proper input sanitization and validation to prevent injection attacks. Use parameterized queries for database operations and encode output for XSS prevention."
+                        elif "password" in category:
+                            details = "The API allows account creation with weak or invalid passwords, which could lead to account compromise."
+                            remediation = "Implement strong password policies requiring minimum length, complexity, and prohibiting common passwords or passwords matching the username."
+                        elif "email" in category:
+                            details = "The API allows account creation with invalid email addresses, which could lead to communication issues or account takeover."
+                            remediation = "Implement proper email validation using standard libraries or regular expressions. Consider email verification via confirmation links."
+                        elif "username" in category:
+                            details = "The API allows account creation with invalid usernames, which could lead to identification issues or potential injection attacks."
+                            remediation = "Implement proper username validation with minimum/maximum length requirements and character restrictions."
+                        else:
+                            details = f"The API allows account creation with invalid input: {test_case['name']}"
+                            remediation = "Implement proper input validation for all user registration fields."
+                        
+                        self.add_finding(
+                            vulnerability=finding_title,
+                            severity=severity,
+                            endpoint=self.endpoint,
+                            details=details,
+                            evidence={
+                                "test_case": test_case['name'],
+                                "request": payload,
+                                "response": response_details
+                            },
+                            remediation=remediation
+                        )
+                        
+                        findings_by_category[category] = True
+                    else:
+                        # Just log that we found another issue in this category
+                        self.logger.info(f"Found additional {category} validation issue: {test_case['name']}")
+                    
                 elif response.status_code in self.validation_status_codes:
                     # Validation is working as expected
                     self.logger.info(f"Validation working for: {test_case['name']}")
@@ -417,14 +824,101 @@ class Scanner(BaseScanner):
         """Test for rate limiting on account creation."""
         self.logger.info("Testing account creation rate limiting")
         
-        # Create multiple accounts in rapid succession
+        # Two-phase testing approach:
+        # 1. Normal testing with moderate speed
+        # 2. Aggressive testing with very rapid requests if normal testing doesn't trigger rate limiting
+        
+        # Phase 1: Normal testing
+        self.logger.info(f"Phase 1: Normal rate limiting test with {self.test_count} requests")
+        rate_limited, successful_creations, response_details = self._perform_rate_limit_test(
+            self.test_count, 
+            self.test_delay,
+            "normal"
+        )
+        
+        # If rate limiting wasn't detected in normal testing, try aggressive testing
+        if not rate_limited and successful_creations >= self.test_count:
+            self.logger.info(f"No rate limiting detected in normal testing. Proceeding to aggressive testing.")
+            self.logger.info(f"Phase 2: Aggressive rate limiting test with {self.aggressive_test_count} requests")
+            
+            # Short pause before aggressive testing to avoid false positives
+            time.sleep(2.0)
+            
+            rate_limited, aggressive_successful, aggressive_response_details = self._perform_rate_limit_test(
+                self.aggressive_test_count,
+                self.aggressive_test_delay,
+                "aggressive"
+            )
+            
+            # Update successful creations count
+            total_successful = successful_creations + aggressive_successful
+            
+            # Check if rate limiting was detected in aggressive testing
+            if rate_limited:
+                self.logger.info(f"Rate limiting detected during aggressive testing after {aggressive_successful} successful creations")
+                # This is not a vulnerability since rate limiting was eventually triggered
+                self.logger.info("Rate limiting is implemented but only triggered under aggressive load")
+            else:
+                # No rate limiting detected even with aggressive testing
+                self.add_finding(
+                    vulnerability="Unrestricted Account Creation - No Rate Limiting",
+                    severity="HIGH",  # Increased severity from MEDIUM to HIGH
+                    endpoint=self.endpoint,
+                    details=f"The API does not implement rate limiting for account creation. Successfully created {total_successful} accounts in rapid succession without any restrictions, including {aggressive_successful} accounts with only {self.aggressive_test_delay} seconds between requests.",
+                    evidence={
+                        "normal_test": {
+                            "successful_creations": successful_creations,
+                            "test_count": self.test_count,
+                            "delay_between_requests": f"{self.test_delay} seconds",
+                            "response_details": response_details
+                        },
+                        "aggressive_test": {
+                            "successful_creations": aggressive_successful,
+                            "test_count": self.aggressive_test_count,
+                            "delay_between_requests": f"{self.aggressive_test_delay} seconds",
+                            "response_details": aggressive_response_details
+                        },
+                        "total_successful_creations": total_successful
+                    },
+                    remediation="Implement rate limiting for account creation to prevent abuse and automated account creation attacks. Consider implementing IP-based rate limiting, CAPTCHA, or other anti-automation measures."
+                )
+        elif rate_limited:
+            # Rate limiting was detected in normal testing - this is good
+            self.logger.info(f"Rate limiting properly implemented, triggered after {successful_creations} account creations")
+        else:
+            # Some other issue prevented testing
+            self.logger.warn(f"Rate limit testing inconclusive: only {successful_creations} accounts created successfully")
+    
+    def _perform_rate_limit_test(self, count: int, delay: float, test_type: str) -> Tuple[bool, int, List[Dict[str, Any]]]:
+        """Helper method to perform rate limit testing with specified parameters.
+        
+        Args:
+            count: Number of accounts to attempt to create
+            delay: Delay between requests in seconds
+            test_type: Type of test (normal or aggressive) for logging
+            
+        Returns:
+            Tuple containing:
+                - Whether rate limiting was detected
+                - Number of successful account creations
+                - List of response details for evidence
+        """
         successful_creations = 0
         rate_limited = False
+        response_details = []
         
-        for i in range(self.test_count):
-            username = f"test_user_rate_{int(time.time())}_{i}"
+        # Generate a unique prefix for this test run to avoid username conflicts
+        timestamp = int(time.time())
+        test_prefix = f"test_{test_type}_{timestamp}"
+        
+        for i in range(count):
+            # Create unique usernames with test type and timestamp
+            username = f"{test_prefix}_{i}"
             email = f"{username}@example.com"
-            password = "Test@123456"
+            
+            # Use a more complex password that meets common requirements
+            random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
+            password = f"Test@{timestamp}#{random_suffix}"
             
             payload = {
                 self.username_field: username,
@@ -436,48 +930,77 @@ class Scanner(BaseScanner):
             payload.update(self.additional_fields)
             
             try:
+                start_time = time.time()
                 response = self._make_request(
                     method=self.method,
                     endpoint=self.endpoint,
                     json_data=payload
                 )
+                request_time = time.time() - start_time
+                
+                # Record response details for evidence
+                response_detail = {
+                    "request_number": i + 1,
+                    "username": username,
+                    "status_code": response.status_code,
+                    "response_time": request_time,
+                    "response_size": len(response.text)
+                }
+                
+                # Truncate response text to avoid excessive data
+                if len(response.text) > 200:
+                    response_detail["response_excerpt"] = response.text[:200] + "..."
+                else:
+                    response_detail["response_excerpt"] = response.text
+                    
+                response_details.append(response_detail)
                 
                 if response.status_code in self.success_status_codes:
                     successful_creations += 1
+                    # Track created accounts for potential cleanup later
+                    self.created_accounts.append({
+                        "username": username,
+                        "email": email,
+                        "password": password
+                    })
+                    self.logger.info(f"Successfully created account {i+1}/{count}: {username}")
                 elif response.status_code in self.rate_limit_status_codes:
                     rate_limited = True
-                    self.logger.info(f"Rate limiting detected after {successful_creations} successful creations")
+                    self.logger.info(f"Rate limiting detected (status code {response.status_code}) after {successful_creations} successful creations")
+                    response_detail["rate_limited"] = True
+                    response_details.append(response_detail)
                     break
+                else:
+                    self.logger.info(f"Unexpected status code {response.status_code} for account {i+1}/{count}")
                 
                 # Check response body for rate limit indicators
-                if not rate_limited:
+                if not rate_limited and response.text:
                     response_text = response.text.lower()
                     for indicator in self.rate_limit_response_contains:
                         if indicator.lower() in response_text:
                             rate_limited = True
                             self.logger.info(f"Rate limiting detected from response body after {successful_creations} successful creations")
+                            response_detail["rate_limited"] = True
+                            response_detail["rate_limit_indicator"] = indicator
+                            response_details.append(response_detail)
                             break
                 
                 if rate_limited:
                     break
+                
+                # Add delay between requests
+                time.sleep(delay)
             
             except Exception as e:
                 self.logger.error(f"Error testing rate limiting: {str(e)}")
+                response_details.append({
+                    "request_number": i + 1,
+                    "username": username,
+                    "error": str(e)
+                })
                 break
         
-        # Check if rate limiting is implemented
-        if not rate_limited and successful_creations >= self.test_count:
-            self.add_finding(
-                vulnerability="Unrestricted Account Creation - No Rate Limiting",
-                severity="MEDIUM",
-                endpoint=self.endpoint,
-                details=f"The API does not implement rate limiting for account creation. Successfully created {successful_creations} accounts in rapid succession.",
-                evidence={
-                    "successful_creations": successful_creations,
-                    "test_count": self.test_count
-                },
-                remediation="Implement rate limiting for account creation to prevent abuse."
-            )
+        return rate_limited, successful_creations, response_details
     
     def _test_account_enumeration(self) -> None:
         """Test for account enumeration during account creation."""

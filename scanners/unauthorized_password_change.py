@@ -89,26 +89,166 @@ class Scanner(BaseScanner):
         endpoints = openapi_data["endpoints"]
         self.logger.info(f"Found {len(endpoints)} endpoints in OpenAPI specification")
         
-        # Use the utility function to find endpoints by purpose and track their sources
-        register_endpoint = find_endpoint_by_purpose(endpoints, "register", self.register_endpoint)
-        if register_endpoint != self.register_endpoint:
-            self.register_endpoint = register_endpoint
+        # Find registration endpoints based on path patterns and request body fields
+        registration_patterns = ["register", "signup", "sign-up", "create_user", "users", "auth/sign-up"]
+        login_patterns = ["login", "signin", "sign-in", "auth/sign-in", "token"]
+        password_change_patterns = ["password", "reset", "change_password", "update-password"]
+        
+        # Score each endpoint based on how likely it is to be a registration, login, or password change endpoint
+        register_candidates = []
+        login_candidates = []
+        password_change_candidates = []
+        debug_candidates = []
+        
+        for endpoint in endpoints:
+            path = endpoint.get("path", "")
+            method = endpoint.get("method", "").upper()
+            summary = endpoint.get("summary", "").lower()
+            description = endpoint.get("description", "").lower()
+            operation_id = endpoint.get("operationId", "").lower()
+            
+            # Check for debug endpoints
+            if "debug" in path.lower() or "debug" in summary or "debug" in description:
+                debug_candidates.append((endpoint, 10))
+                continue
+                
+            # Registration endpoint scoring
+            if method == "POST":
+                register_score = 0
+                for pattern in registration_patterns:
+                    if pattern in path.lower():
+                        register_score += 5
+                    if pattern in summary or pattern in description or pattern in operation_id:
+                        register_score += 3
+                
+                # Check request body for username/email/password fields
+                request_body = endpoint.get("requestBody", {})
+                if request_body:
+                    properties = self._extract_request_properties(request_body)
+                    if properties:
+                        username_found = any(prop for prop in properties if "user" in prop.lower() or "name" in prop.lower())
+                        email_found = any(prop for prop in properties if "email" in prop.lower())
+                        password_found = any(prop for prop in properties if "pass" in prop.lower())
+                        
+                        if username_found:
+                            register_score += 2
+                        if email_found:
+                            register_score += 2
+                        if password_found:
+                            register_score += 2
+                            
+                if register_score > 0:
+                    register_candidates.append((endpoint, register_score))
+            
+            # Login endpoint scoring
+            if method == "POST":
+                login_score = 0
+                for pattern in login_patterns:
+                    if pattern in path.lower():
+                        login_score += 5
+                    if pattern in summary or pattern in description or pattern in operation_id:
+                        login_score += 3
+                
+                # Check request body for username/password fields
+                request_body = endpoint.get("requestBody", {})
+                if request_body:
+                    properties = self._extract_request_properties(request_body)
+                    if properties:
+                        username_found = any(prop for prop in properties if "user" in prop.lower() or "name" in prop.lower() or "email" in prop.lower())
+                        password_found = any(prop for prop in properties if "pass" in prop.lower())
+                        
+                        if username_found:
+                            login_score += 2
+                        if password_found:
+                            login_score += 3
+                            
+                if login_score > 0:
+                    login_candidates.append((endpoint, login_score))
+            
+            # Password change endpoint scoring
+            if method in ["PUT", "POST", "PATCH"]:
+                password_score = 0
+                for pattern in password_change_patterns:
+                    if pattern in path.lower():
+                        password_score += 5
+                    if pattern in summary or pattern in description or pattern in operation_id:
+                        password_score += 3
+                
+                # Check if path contains a parameter (like {username} or {userId})
+                if "{" in path and "}" in path:
+                    password_score += 4
+                
+                # Check request body for password fields
+                request_body = endpoint.get("requestBody", {})
+                if request_body:
+                    properties = self._extract_request_properties(request_body)
+                    if properties:
+                        password_found = any(prop for prop in properties if "pass" in prop.lower())
+                        new_password_found = any(prop for prop in properties if "new" in prop.lower() and "pass" in prop.lower())
+                        
+                        if password_found:
+                            password_score += 2
+                        if new_password_found:
+                            password_score += 3
+                            
+                if password_score > 0:
+                    password_change_candidates.append((endpoint, password_score))
+        
+        # Select the highest scoring candidates
+        if register_candidates:
+            register_candidates.sort(key=lambda x: x[1], reverse=True)
+            best_register = register_candidates[0][0]
+            self.register_endpoint = best_register.get("path")
             self.endpoint_sources["register"] = "openapi"
-            
-        debug_endpoint = find_endpoint_by_purpose(endpoints, "debug", self.debug_endpoint)
-        if debug_endpoint != self.debug_endpoint:
-            self.debug_endpoint = debug_endpoint
-            self.endpoint_sources["debug"] = "openapi"
-            
-        login_endpoint = find_endpoint_by_purpose(endpoints, "login", self.login_endpoint)
-        if login_endpoint != self.login_endpoint:
-            self.login_endpoint = login_endpoint
+            self.logger.info(f"Found registration endpoint: {self.register_endpoint}")
+        
+        if login_candidates:
+            login_candidates.sort(key=lambda x: x[1], reverse=True)
+            best_login = login_candidates[0][0]
+            self.login_endpoint = best_login.get("path")
             self.endpoint_sources["login"] = "openapi"
-            
-        password_change_endpoint = find_endpoint_by_purpose(endpoints, "password_change", self.password_change_endpoint)
-        if password_change_endpoint != self.password_change_endpoint:
-            self.password_change_endpoint = password_change_endpoint
+            self.logger.info(f"Found login endpoint: {self.login_endpoint}")
+        
+        if password_change_candidates:
+            password_change_candidates.sort(key=lambda x: x[1], reverse=True)
+            best_password_change = password_change_candidates[0][0]
+            self.password_change_endpoint = best_password_change.get("path")
             self.endpoint_sources["password_change"] = "openapi"
+            self.logger.info(f"Found password change endpoint: {self.password_change_endpoint}")
+        
+        if debug_candidates:
+            debug_candidates.sort(key=lambda x: x[1], reverse=True)
+            best_debug = debug_candidates[0][0]
+            self.debug_endpoint = best_debug.get("path")
+            self.endpoint_sources["debug"] = "openapi"
+            self.logger.info(f"Found debug endpoint: {self.debug_endpoint}")
+    
+    def _extract_request_properties(self, request_body: Dict[str, Any]) -> List[str]:
+        """
+        Extract property names from a request body schema.
+        
+        Args:
+            request_body: Request body object from OpenAPI spec
+            
+        Returns:
+            List of property names
+        """
+        properties = []
+        
+        # Handle different OpenAPI structures
+        if "content" in request_body:
+            content = request_body.get("content", {})
+            for content_type, content_schema in content.items():
+                if "schema" in content_schema:
+                    schema = content_schema["schema"]
+                    if "properties" in schema:
+                        properties.extend(schema["properties"].keys())
+        elif "schema" in request_body:
+            schema = request_body["schema"]
+            if "properties" in schema:
+                properties.extend(schema["properties"].keys())
+        
+        return properties
     
     def run(self) -> List[Dict[str, Any]]:
         """
@@ -392,35 +532,130 @@ class Scanner(BaseScanner):
         existing_accounts = self._get_existing_accounts()
         if not existing_accounts:
             self.logger.warn("No existing accounts found, skipping unauthorized password change test")
-            return
+            # Try to create some accounts for testing if none exist
+            self._create_test_accounts()
+            existing_accounts = self._get_existing_accounts()
+            if not existing_accounts:
+                self.logger.warn("Still no accounts available after creating test accounts, skipping test")
+                return
         
         # Step 2: Register a new test user with admin privileges
         if not self._register_test_user():
-            return
+            self.logger.warn("Failed to register test user, trying alternative registration endpoint")
+            # Try with alternative endpoint patterns for Snorefox API
+            original_endpoint = self.register_endpoint
+            
+            # Try alternative endpoints
+            alternative_endpoints = [
+                "/auth/sign-up",
+                "/api/auth/sign-up",
+                "/api/v1/auth/sign-up",
+                "/api/v1/auth/register",
+                "/api/v1/users",
+                "/users"
+            ]
+            
+            for alt_endpoint in alternative_endpoints:
+                self.logger.info(f"Trying alternative registration endpoint: {alt_endpoint}")
+                self.register_endpoint = alt_endpoint
+                if self._register_test_user():
+                    self.logger.info(f"Successfully registered user with alternative endpoint: {alt_endpoint}")
+                    break
+            
+            # If still not successful, restore original endpoint and return
+            if self.register_endpoint != original_endpoint and not self._verify_user_created():
+                self.register_endpoint = original_endpoint
+                self.logger.warn("Failed to register test user with any endpoint, skipping test")
+                return
         
         # Step 3: Verify the new account was created
         if not self._verify_user_created():
-            return
+            self.logger.warn("Could not verify test user was created, continuing anyway")
         
         # Step 4: Login as the new user to get auth token
         auth_token = self._login_and_get_token()
         if not auth_token:
-            return
+            self.logger.warn("Failed to login with test user, trying alternative login endpoint")
+            # Try with alternative endpoint patterns for Snorefox API
+            original_endpoint = self.login_endpoint
+            
+            # Try alternative endpoints
+            alternative_endpoints = [
+                "/auth/sign-in",
+                "/api/auth/sign-in",
+                "/api/v1/auth/sign-in",
+                "/api/v1/auth/login",
+                "/api/v1/login",
+                "/login"
+            ]
+            
+            for alt_endpoint in alternative_endpoints:
+                self.logger.info(f"Trying alternative login endpoint: {alt_endpoint}")
+                self.login_endpoint = alt_endpoint
+                auth_token = self._login_and_get_token()
+                if auth_token:
+                    self.logger.info(f"Successfully logged in with alternative endpoint: {alt_endpoint}")
+                    break
+            
+            # If still not successful, restore original endpoint and return
+            if not auth_token:
+                self.login_endpoint = original_endpoint
+                self.logger.warn("Failed to login with any endpoint, skipping test")
+                return
         
         # Step 5: Find a target user that is not our test user
         target_user = None
         for account in existing_accounts:
-            username = account.get(self.username_field)
-            if username and username != self.test_username:
-                target_user = username
+            # Try different field names for username
+            for field in [self.username_field, "username", "user", "name", "id", "userId"]:
+                username = account.get(field)
+                if username and username != self.test_username:
+                    target_user = username
+                    if field != self.username_field:
+                        self.logger.info(f"Found username in alternative field: {field}")
+                    break
+            if target_user:
                 break
         
         if not target_user:
             self.logger.warn("No target user found to test password change")
             return
         
-        # Step 6: Attempt to change the target user's password
-        if not self._change_other_user_password(target_user, auth_token):
+        # Step 6: Try different password change endpoint patterns
+        password_change_success = False
+        original_endpoint = self.password_change_endpoint
+        
+        # First try the configured endpoint
+        if self._change_other_user_password(target_user, auth_token):
+            password_change_success = True
+        else:
+            # Try alternative endpoint patterns
+            alternative_patterns = [
+                "/users/{username}/password",
+                "/api/users/{username}/password",
+                "/api/v1/users/{username}/password",
+                "/auth/users/{username}/password",
+                "/api/v1/auth/users/{username}/password",
+                "/users/me/password",  # Some APIs might use 'me' and rely on the token
+                "/api/users/me/password",
+                "/api/v1/users/me/password",
+                "/auth/password",  # Some APIs don't use username in the path
+                "/api/auth/password",
+                "/api/v1/auth/password"
+            ]
+            
+            for pattern in alternative_patterns:
+                self.logger.info(f"Trying alternative password change pattern: {pattern}")
+                self.password_change_endpoint = pattern
+                if self._change_other_user_password(target_user, auth_token):
+                    password_change_success = True
+                    self.logger.info(f"Successfully changed password with alternative endpoint: {pattern}")
+                    break
+        
+        # If password change wasn't successful with any endpoint, restore original and return
+        if not password_change_success:
+            self.password_change_endpoint = original_endpoint
+            self.logger.warn("Failed to change password with any endpoint pattern, skipping verification")
             return
         
         # Step 7: Verify the password was changed
@@ -453,3 +688,41 @@ class Scanner(BaseScanner):
                 },
                 remediation="Implement proper authorization checks to ensure users can only change their own passwords. Verify the user's identity from the authentication token and compare it with the requested resource."
             )
+        else:
+            self.logger.info("Password change appeared to succeed but verification failed")
+            
+    def _create_test_accounts(self) -> None:
+        """Create some test accounts for testing if none exist."""
+        self.logger.info("Creating test accounts for unauthorized password change testing")
+        
+        # Create 2 test accounts
+        for i in range(2):
+            timestamp = int(time.time())
+            random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+            username = f"test_account_{timestamp}_{random_suffix}_{i}"
+            email = f"{username}@example.com"
+            password = f"TestPassword@{timestamp}"
+            
+            payload = {
+                self.username_field: username,
+                self.email_field: email,
+                self.password_field: password
+            }
+            
+            try:
+                self.logger.info(f"Creating test account {i+1}: {username}")
+                response = self._make_request(
+                    method="POST",
+                    endpoint=self.register_endpoint,
+                    json_data=payload
+                )
+                
+                if response.status_code in self.success_status_codes:
+                    self.logger.info(f"Successfully created test account: {username}")
+                else:
+                    self.logger.warn(f"Failed to create test account, status code: {response.status_code}")
+            except Exception as e:
+                self.logger.error(f"Error creating test account: {str(e)}")
+            
+            # Add delay between requests
+            time.sleep(self.test_delay)

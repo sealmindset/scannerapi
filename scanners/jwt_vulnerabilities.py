@@ -138,6 +138,112 @@ class Scanner(BaseScanner):
             "HS512"   # HMAC with SHA-512
         ])
         
+    def _make_request(self, method: str, endpoint: str, json_data: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None) -> requests.Response:
+        """
+        Make an HTTP request to the target API with proper authentication and capture detailed information.
+        
+        Args:
+            method: HTTP method (GET, POST, PUT, DELETE, etc.)
+            endpoint: API endpoint to call
+            json_data: JSON data to send in the request body
+            headers: HTTP headers to include in the request
+            
+        Returns:
+            Response object with request and response details attached
+        """
+        url = self._get_full_url(endpoint)
+        if headers is None:
+            headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        else:
+            # Ensure Content-Type and Accept headers are set
+            if "Content-Type" not in headers:
+                headers["Content-Type"] = "application/json"
+            if "Accept" not in headers:
+                headers["Accept"] = "application/json"
+        
+        # Store request details for evidence
+        request_details = {
+            "method": method,
+            "url": url,
+            "headers": dict(headers),
+            "json_data": json_data
+        }
+        
+        try:
+            self.logger.debug(f"Making {method} request to {url}")
+            response = requests.request(
+                method=method,
+                url=url,
+                json=json_data,
+                headers=headers,
+                timeout=10,
+                verify=False
+            )
+            
+            # Store response details for evidence
+            response_details = {
+                "status_code": response.status_code,
+                "headers": dict(response.headers),
+                "body": self._safely_get_response_body(response)
+            }
+            
+            # Attach request and response details to the response object for later use
+            response.request_details = request_details
+            response.response_details = response_details
+            
+            return response
+        except Exception as e:
+            self.logger.error(f"Error making request to {url}: {str(e)}")
+            # Return a dummy response object with an error status code
+            response = requests.Response()
+            response.status_code = 500
+            # Attach request details even for failed requests
+            response.request_details = request_details
+            response.response_details = {
+                "status_code": 500,
+                "error": str(e)
+            }
+            return response
+    
+    def _safely_get_response_body(self, response: requests.Response) -> Any:
+        """
+        Safely extract the response body as JSON or text.
+        
+        Args:
+            response: Response object to extract body from
+            
+        Returns:
+            Response body as JSON or text
+        """
+        try:
+            return response.json()
+        except ValueError:
+            # If not JSON, return text (truncated if too large)
+            return response.text[:2000] if len(response.text) > 2000 else response.text
+    
+    def _get_full_url(self, endpoint: str) -> str:
+        """
+        Get the full URL for an endpoint.
+        
+        Args:
+            endpoint: API endpoint path
+            
+        Returns:
+            Full URL including base URL and endpoint
+        """
+        if endpoint.startswith("http"):
+            return endpoint
+        
+        base_url = self.target.get("base_url", "")
+        if not base_url:
+            return endpoint
+        
+        # Handle both with and without trailing/leading slashes
+        base_url = base_url.rstrip("/")
+        endpoint = endpoint.lstrip("/")
+        
+        return f"{base_url}/{endpoint}"
+    
     def _extract_endpoints_from_openapi(self, target: Dict[str, Any]) -> None:
         """
         Extract API endpoints from OpenAPI specification.
@@ -375,12 +481,61 @@ class Scanner(BaseScanner):
         if self.simulate_vulnerabilities:
             self.logger.info("Simulating JWT vulnerabilities as requested")
             
+            # Create sample tokens for evidence
+            sample_token = self._create_sample_token()
+            tampered_token = self._create_tampered_token(sample_token)
+            
+            # Create sample request and response data
+            login_request = {
+                "method": "POST",
+                "url": self._get_full_url(self.login_endpoint),
+                "headers": {"Content-Type": "application/json"},
+                "json_data": {self.username_field: "test@example.com", self.password_field: "Test123!@#"}
+            }
+            
+            login_response = {
+                "status_code": 200,
+                "headers": {"Content-Type": "application/json"},
+                "body": {self.access_token_field: sample_token, "user": {"id": 1, "email": "test@example.com"}}
+            }
+            
+            check_request = {
+                "method": "GET",
+                "url": self._get_full_url(self.user_info_endpoint),
+                "headers": {"Authorization": f"Bearer {sample_token}", "Content-Type": "application/json"}
+            }
+            
+            check_response = {
+                "status_code": 200,
+                "headers": {"Content-Type": "application/json"},
+                "body": {"user": {"id": 1, "email": "test@example.com", "role": "user"}}
+            }
+            
+            tampered_request = {
+                "method": "GET",
+                "url": self._get_full_url(self.user_info_endpoint),
+                "headers": {"Authorization": f"Bearer {tampered_token}", "Content-Type": "application/json"}
+            }
+            
+            tampered_response = {
+                "status_code": 200,
+                "headers": {"Content-Type": "application/json"},
+                "body": {"user": {"id": 1, "email": "test@example.com", "role": "admin"}}
+            }
+            
             # Simulate 'none' algorithm vulnerability
             self.add_finding(
                 vulnerability="JWT 'none' Algorithm Vulnerability",
                 severity="CRITICAL",
                 endpoint=self.user_info_endpoint,
                 details="The API accepts JWT tokens with the 'none' algorithm, allowing authentication bypass.",
+                evidence={
+                    "original_token": sample_token,
+                    "tampered_token": tampered_token,
+                    "decoded_payload": self._decode_token_payload(tampered_token),
+                    "request": tampered_request,
+                    "response": tampered_response
+                },
                 remediation="Ensure that the JWT library explicitly rejects tokens with the 'none' algorithm."
             )
             
@@ -390,6 +545,12 @@ class Scanner(BaseScanner):
                 severity="CRITICAL",
                 endpoint=self.login_endpoint,
                 details="The API uses a weak signing key ('secret') for JWT tokens, allowing token forgery.",
+                evidence={
+                    "weak_key": "secret",
+                    "token": sample_token,
+                    "request": login_request,
+                    "response": login_response
+                },
                 remediation="Use a strong, randomly generated signing key with at least 256 bits of entropy."
             )
             
@@ -399,6 +560,13 @@ class Scanner(BaseScanner):
                 severity="CRITICAL",
                 endpoint=self.user_info_endpoint,
                 details="The API does not properly validate JWT signatures, allowing attackers to modify token content without detection.",
+                evidence={
+                    "original_token": sample_token,
+                    "tampered_token": tampered_token,
+                    "decoded_payload": self._decode_token_payload(tampered_token),
+                    "request": check_request,
+                    "response": check_response
+                },
                 remediation="Ensure that the JWT library properly validates token signatures and rejects tokens with invalid signatures."
             )
             
@@ -408,6 +576,12 @@ class Scanner(BaseScanner):
                 severity="CRITICAL",
                 endpoint=self.user_info_endpoint,
                 details="The API does not properly validate the integrity of JWT tokens, allowing attackers to modify the expiration time.",
+                evidence={
+                    "original_token": sample_token,
+                    "tampered_token": self._create_token_with_extended_expiry(),
+                    "request": check_request,
+                    "response": check_response
+                },
                 remediation="Ensure that the JWT library properly validates token signatures and rejects tokens with invalid signatures."
             )
             
@@ -417,6 +591,13 @@ class Scanner(BaseScanner):
                 severity="CRITICAL",
                 endpoint=self.user_info_endpoint,
                 details="The API does not properly validate the integrity of JWT tokens, allowing attackers to modify the payload using None algorithm to gain elevated privileges.",
+                evidence={
+                    "original_token": sample_token,
+                    "tampered_token": self._create_admin_token(),
+                    "decoded_payload": {"sub": "1234567890", "name": "Test User", "role": "admin", "iat": int(time.time()), "exp": int(time.time()) + 3600},
+                    "request": tampered_request,
+                    "response": tampered_response
+                },
                 remediation="Ensure that the JWT library properly validates token signatures and rejects tokens with invalid signatures or using the 'none' algorithm."
             )
             
@@ -1314,3 +1495,160 @@ class Scanner(BaseScanner):
             endpoint=endpoint,
             headers=headers
         )
+        
+    def _create_sample_token(self) -> str:
+        """
+        Create a sample JWT token for testing purposes.
+        
+        Returns:
+            A JWT token string
+        """
+        try:
+            if not HAS_JWT:
+                self.logger.error("PyJWT library not found, cannot create test token")
+                return "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNjE2MTIzNDU2LCJleHAiOjE2MTYyMDk4NTZ9.ZG9sbHkgcGFydG9uIGlzIHRoZSBxdWVlbiBvZiBjb3VudHJ5IG11c2lj"
+            
+            # Create a payload with common fields
+            payload = {
+                "sub": "1234567890",
+                "name": "Test User",
+                "role": "user",
+                "iat": int(time.time()),
+                "exp": int(time.time()) + 3600 * 24  # 1 day
+            }
+            
+            # Sign with a weak key
+            weak_key = "secret"
+            self.logger.debug(f"Creating token with weak key: '{weak_key}'")
+            access_token = pyjwt.encode(payload, weak_key, algorithm="HS256")
+            
+            if isinstance(access_token, bytes):
+                access_token = access_token.decode('utf-8')
+            
+            return access_token
+        except Exception as e:
+            self.logger.error(f"Error creating sample token: {str(e)}")
+            return "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNjE2MTIzNDU2LCJleHAiOjE2MTYyMDk4NTZ9.ZG9sbHkgcGFydG9uIGlzIHRoZSBxdWVlbiBvZiBjb3VudHJ5IG11c2lj"
+    
+    def _create_tampered_token(self, original_token: str) -> str:
+        """
+        Create a tampered JWT token with the 'none' algorithm.
+        
+        Args:
+            original_token: The original JWT token
+            
+        Returns:
+            A tampered JWT token string
+        """
+        try:
+            # Split the token into parts
+            parts = original_token.split('.')
+            if len(parts) != 3:
+                self.logger.error(f"Invalid token format: {original_token}")
+                return original_token
+            
+            # Decode the header
+            header_str = self._decode_jwt_part(parts[0])
+            header = json.loads(header_str)
+            
+            # Change the algorithm to 'none'
+            header['alg'] = 'none'
+            
+            # Encode the header back
+            new_header = self._encode_jwt_part(header)
+            
+            # Return the tampered token with empty signature
+            return f"{new_header}.{parts[1]}."
+        except Exception as e:
+            self.logger.error(f"Error creating tampered token: {str(e)}")
+            return original_token
+    
+    def _create_token_with_extended_expiry(self) -> str:
+        """
+        Create a JWT token with an extended expiration time.
+        
+        Returns:
+            A JWT token string with extended expiry
+        """
+        try:
+            if not HAS_JWT:
+                self.logger.error("PyJWT library not found, cannot create test token")
+                return "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNjE2MTIzNDU2LCJleHAiOjE2NDc2NTk0NTZ9.ZG9sbHkgcGFydG9uIGlzIHRoZSBxdWVlbiBvZiBjb3VudHJ5IG11c2lj"
+            
+            # Create a payload with common fields and extended expiry
+            payload = {
+                "sub": "1234567890",
+                "name": "Test User",
+                "role": "user",
+                "iat": int(time.time()),
+                "exp": int(time.time()) + 3600 * 24 * 365  # 1 year
+            }
+            
+            # Sign with a weak key
+            weak_key = "secret"
+            access_token = pyjwt.encode(payload, weak_key, algorithm="HS256")
+            
+            if isinstance(access_token, bytes):
+                access_token = access_token.decode('utf-8')
+            
+            return access_token
+        except Exception as e:
+            self.logger.error(f"Error creating token with extended expiry: {str(e)}")
+            return "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNjE2MTIzNDU2LCJleHAiOjE2NDc2NTk0NTZ9.ZG9sbHkgcGFydG9uIGlzIHRoZSBxdWVlbiBvZiBjb3VudHJ5IG11c2lj"
+    
+    def _create_admin_token(self) -> str:
+        """
+        Create a JWT token with admin privileges.
+        
+        Returns:
+            A JWT token string with admin role
+        """
+        try:
+            if not HAS_JWT:
+                self.logger.error("PyJWT library not found, cannot create test token")
+                return "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTYxNjEyMzQ1NiwiZXhwIjoxNjE2MjA5ODU2fQ.ZG9sbHkgcGFydG9uIGlzIHRoZSBxdWVlbiBvZiBjb3VudHJ5IG11c2lj"
+            
+            # Create a payload with admin role
+            payload = {
+                "sub": "1234567890",
+                "name": "Test User",
+                "role": "admin",
+                "iat": int(time.time()),
+                "exp": int(time.time()) + 3600 * 24  # 1 day
+            }
+            
+            # Sign with a weak key
+            weak_key = "secret"
+            access_token = pyjwt.encode(payload, weak_key, algorithm="HS256")
+            
+            if isinstance(access_token, bytes):
+                access_token = access_token.decode('utf-8')
+            
+            return access_token
+        except Exception as e:
+            self.logger.error(f"Error creating admin token: {str(e)}")
+            return "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTYxNjEyMzQ1NiwiZXhwIjoxNjE2MjA5ODU2fQ.ZG9sbHkgcGFydG9uIGlzIHRoZSBxdWVlbiBvZiBjb3VudHJ5IG11c2lj"
+    
+    def _decode_token_payload(self, token: str) -> Dict[str, Any]:
+        """
+        Decode the payload of a JWT token without verification.
+        
+        Args:
+            token: The JWT token to decode
+            
+        Returns:
+            The decoded payload as a dictionary
+        """
+        try:
+            # Split the token into parts
+            parts = token.split('.')
+            if len(parts) < 2:
+                self.logger.error(f"Invalid token format: {token}")
+                return {}
+            
+            # Decode the payload
+            payload_str = self._decode_jwt_part(parts[1])
+            return json.loads(payload_str)
+        except Exception as e:
+            self.logger.error(f"Error decoding token payload: {str(e)}")
+            return {}
