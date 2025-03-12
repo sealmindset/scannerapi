@@ -537,7 +537,7 @@ class Scanner(BaseScanner):
             
             try:
                 # Make the request
-                response = self._make_request(test_endpoint)
+                response = self._make_request(method="GET", endpoint=test_endpoint)
                 
                 # Check for SQL error patterns in the response
                 if response and self._check_for_sql_error(response):

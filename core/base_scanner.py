@@ -46,6 +46,15 @@ class BaseScanner(ABC):
         self.findings = []
         self.logger = get_logger(self.__class__.__name__)
         
+        # Support for simulation mode when the target server is not available
+        self.simulate_server = target.get("simulate_server", False)
+        self.simulate_vulnerabilities = config.get("simulate_vulnerabilities", False)
+        
+        if self.simulate_server:
+            self.logger.info("Server simulation mode enabled - API responses will be simulated")
+        if self.simulate_vulnerabilities:
+            self.logger.info("Vulnerability simulation mode enabled - vulnerabilities will be simulated")
+        
         # Set up session with common configuration
         self.session = requests.Session()
         self.session.headers.update(self.headers)
