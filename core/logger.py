@@ -97,6 +97,11 @@ def setup_logger(config: Dict = None) -> None:
     
     # Get log output path
     log_output = config.get("output", "logs/scanner.log")
+    
+    # Ensure logs are always stored in the logs directory
+    if not log_output.startswith("logs/") and not "/" in log_output:
+        log_output = os.path.join("logs", log_output)
+    
     log_dir = os.path.dirname(log_output)
     if log_dir and not os.path.exists(log_dir):
         os.makedirs(log_dir, exist_ok=True)

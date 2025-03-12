@@ -186,6 +186,13 @@ def main():
     
     args = parser.parse_args()
     
+    # Ensure the output path is in the configs directory if it's just a filename
+    if not os.path.isabs(args.output) and not os.path.dirname(args.output):
+        # Create the configs directory if it doesn't exist
+        if not os.path.exists("configs"):
+            os.makedirs("configs", exist_ok=True)
+        args.output = os.path.join("configs", args.output)
+    
     try:
         # Load the OpenAPI specification
         openapi_spec = load_openapi_spec(args.swagger)

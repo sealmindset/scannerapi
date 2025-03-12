@@ -450,6 +450,13 @@ def main():
                         help="Control whether the RegexDOS scanner runs (default: false)")
     args = parser.parse_args()
     
+    # Handle config path - check if it's a relative path without directory
+    if not os.path.isabs(args.config) and not os.path.dirname(args.config):
+        # If it's just a filename, look in the configs directory
+        configs_path = os.path.join("configs", args.config)
+        if os.path.exists(configs_path):
+            args.config = configs_path
+    
     # Setup logging
     log_config = {}
     try:

@@ -129,9 +129,19 @@ def load_config(config_path: str) -> Dict[str, Any]:
         FileNotFoundError: If the configuration file does not exist
         ValueError: If the configuration file format is not supported
     """
+    # Check if the config file exists at the given path
     if not os.path.exists(config_path):
-        logger.error(f"Configuration file not found: {config_path}")
-        raise FileNotFoundError(f"Configuration file not found: {config_path}")
+        # If it's a relative path without directory, try looking in the configs directory
+        if not os.path.isabs(config_path) and not os.path.dirname(config_path):
+            configs_path = os.path.join("configs", config_path)
+            if os.path.exists(configs_path):
+                config_path = configs_path
+            else:
+                logger.error(f"Configuration file not found: {config_path} or {configs_path}")
+                raise FileNotFoundError(f"Configuration file not found: {config_path} or {configs_path}")
+        else:
+            logger.error(f"Configuration file not found: {config_path}")
+            raise FileNotFoundError(f"Configuration file not found: {config_path}")
     
     # Determine file format based on extension
     file_ext = os.path.splitext(config_path)[1].lower()
@@ -152,7 +162,14 @@ def load_config(config_path: str) -> Dict[str, Any]:
     # Apply environment-specific overrides if specified
     environment = config.get("environment")
     if environment:
-        env_config_path = f"{os.path.splitext(config_path)[0]}.{environment}{file_ext}"
+        # Get the directory and filename parts
+        config_dir = os.path.dirname(config_path)
+        config_basename = os.path.basename(config_path)
+        config_name = os.path.splitext(config_basename)[0]
+        
+        # Create the environment-specific config path
+        env_config_path = os.path.join(config_dir, f"{config_name}.{environment}{file_ext}")
+        
         if os.path.exists(env_config_path):
             logger.info(f"Loading environment-specific configuration: {env_config_path}")
             try:
