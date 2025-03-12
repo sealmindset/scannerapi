@@ -62,9 +62,13 @@ class ScannerOrchestrator:
             self.logger.info(f"Loading configuration from {self.config_path}")
             self.config = load_config(self.config_path)
             
-            # Process OpenAPI specification if provided
+            # Process OpenAPI specification if provided via command line
             if self.swagger_path:
-                self._load_openapi_spec()
+                self._load_openapi_spec(self.swagger_path)
+            # Or check if it's specified in the configuration file
+            elif self.config.get('target', {}).get('openapi', {}).get('spec_path'):
+                spec_path = self.config['target']['openapi']['spec_path']
+                self._load_openapi_spec(spec_path)
                 
             # Apply URL override if provided
             if self.url_override:
@@ -76,17 +80,21 @@ class ScannerOrchestrator:
             self.logger.fatal(f"Failed to load configuration: {str(e)}")
             raise ScannerConfigError(f"Configuration error: {str(e)}")
             
-    def _load_openapi_spec(self) -> None:
-        """Load and process OpenAPI specification."""
+    def _load_openapi_spec(self, spec_path: str) -> None:
+        """Load and process OpenAPI specification.
+        
+        Args:
+            spec_path: Path to the OpenAPI specification file
+        """
         try:
-            self.logger.info(f"Loading OpenAPI specification from {self.swagger_path}")
+            self.logger.info(f"Loading OpenAPI specification from {spec_path}")
             
             # Check if file exists
-            if not os.path.exists(self.swagger_path):
-                raise FileNotFoundError(f"OpenAPI specification file not found: {self.swagger_path}")
+            if not os.path.exists(spec_path):
+                raise FileNotFoundError(f"OpenAPI specification file not found: {spec_path}")
             
             # Load and validate OpenAPI specification
-            self.openapi_spec = load_openapi_spec(self.swagger_path)
+            self.openapi_spec = load_openapi_spec(spec_path)
             
             # Extract server URLs from OpenAPI spec
             server_urls = extract_server_urls(self.openapi_spec)

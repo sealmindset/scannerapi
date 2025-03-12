@@ -50,10 +50,15 @@ class BaseScanner(ABC):
         self.simulate_server = target.get("simulate_server", False)
         self.simulate_vulnerabilities = config.get("simulate_vulnerabilities", False)
         
+        # Option to disable fallback endpoints
+        self.disable_fallback_endpoints = target.get("disable_fallback_endpoints", False)
+        
         if self.simulate_server:
             self.logger.info("Server simulation mode enabled - API responses will be simulated")
         if self.simulate_vulnerabilities:
             self.logger.info("Vulnerability simulation mode enabled - vulnerabilities will be simulated")
+        if self.disable_fallback_endpoints:
+            self.logger.info("Fallback endpoints disabled - only testing endpoints from OpenAPI specification")
         
         # Set up session with common configuration
         self.session = requests.Session()

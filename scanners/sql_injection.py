@@ -97,12 +97,14 @@ class Scanner(BaseScanner):
         # Extract endpoints from OpenAPI spec if available
         openapi_endpoints = self._extract_endpoints_from_openapi(target)
         
-        # If no endpoints were found in OpenAPI spec, use the fallback endpoints
-        if not self.endpoints:
+        # If no endpoints were found in OpenAPI spec, use the fallback endpoints unless disabled
+        if not self.endpoints and not self.disable_fallback_endpoints:
             self.logger.info(f"No endpoints found in OpenAPI specification, using {len(self.fallback_endpoints)} fallback endpoints")
             for endpoint in self.fallback_endpoints:
                 self.endpoints.append(endpoint)
                 self.endpoint_sources[endpoint] = "fallback"
+        elif not self.endpoints and self.disable_fallback_endpoints:
+            self.logger.info("No endpoints found in OpenAPI specification and fallback endpoints are disabled")
         
         # Log the resolved endpoints with their sources
         self.logger.info(f"Testing {len(self.endpoints)} endpoints for SQL injection")

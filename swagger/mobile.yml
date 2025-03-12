@@ -1,7 +1,7 @@
 openapi: 3.0.1
 info:
-  title: BreatheIQ Mobile API
-  description: API for the BreatheIQ Mobile Application. Query parameters need to
+  title: NarcolepsyIQ Mobile API
+  description: API for the NarcolepsyIQ Mobile Application. Query parameters need to
     be url encoded.
   version: 0.6.4
 servers:
@@ -78,7 +78,7 @@ paths:
       tags:
       - Authentication
       summary: Check if the user exists
-      description: Check if the user exists with the given email in the BIQ or SIQ
+      description: Check if the user exists with the given email in the NIQ or HIQ
         system. Query parameters such as email need to be url encoded.
       parameters:
       - in: query
@@ -1440,13 +1440,13 @@ components:
         user:
           type: object
           required:
-          - existsInBreatheIQ
-          - existsInSleepIQ
+          - existsInNarcolepsyIQ
+          - existsInHypersomniaIQ
           - isInvited
           properties:
-            existsInBreatheIQ:
+            existsInNarcolepsyIQ:
               type: boolean
-            existsInSleepIQ:
+            existsInHypersomniaIQ:
               type: boolean
             isInvited:
               type: boolean

@@ -1,0 +1,39 @@
+target:
+  base_url: https://9n37afa8hc.execute-api.us-east-1.amazonaws.com/Test
+  auth:
+    type: none
+  openapi:
+    spec_path: swagger/ecim.yml
+    extract_endpoints: true
+    use_spec_server_url: true
+  simulate_server: false
+  disable_fallback_endpoints: true
+scanners:
+- name: sql_injection
+  enabled: true
+- name: broken_authentication
+  enabled: true
+- name: broken_access_control
+  enabled: true
+- name: excessive_data_exposure
+  enabled: true
+- name: mass_assignment
+  enabled: true
+- name: unauthorized_password_change
+  enabled: true
+- name: unrestricted_account_creation
+  enabled: true
+- name: regex_dos
+  enabled: false
+- name: jwt_vulnerabilities
+  enabled: true
+  config:
+    simulate_vulnerabilities: false
+    debug: true
+    login_endpoint: /v1/token
+    refresh_token_endpoint: /v1/token
+    user_info_endpoint: /v1/merge/users/{mergedUserId}
+    username_field: email
+    password_field: password
+    access_token_field: accessToken
+    refresh_token_field: refreshToken

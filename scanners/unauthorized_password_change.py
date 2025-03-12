@@ -34,6 +34,9 @@ class Scanner(BaseScanner):
         self.login_endpoint = config.get("login_endpoint", "/users/v1/login")
         self.password_change_endpoint = config.get("password_change_endpoint", "/users/v1/{username}/password")
         
+        # Track the source of each endpoint (fallback, openapi, config)
+        self.endpoint_sources = {}
+        
         # Extract endpoints from OpenAPI spec if available
         self._extract_endpoints_from_openapi(target)
         
@@ -86,11 +89,26 @@ class Scanner(BaseScanner):
         endpoints = openapi_data["endpoints"]
         self.logger.info(f"Found {len(endpoints)} endpoints in OpenAPI specification")
         
-        # Use the utility function to find endpoints by purpose
-        self.register_endpoint = find_endpoint_by_purpose(endpoints, "register", self.register_endpoint)
-        self.debug_endpoint = find_endpoint_by_purpose(endpoints, "debug", self.debug_endpoint)
-        self.login_endpoint = find_endpoint_by_purpose(endpoints, "login", self.login_endpoint)
-        self.password_change_endpoint = find_endpoint_by_purpose(endpoints, "password_change", self.password_change_endpoint)
+        # Use the utility function to find endpoints by purpose and track their sources
+        register_endpoint = find_endpoint_by_purpose(endpoints, "register", self.register_endpoint)
+        if register_endpoint != self.register_endpoint:
+            self.register_endpoint = register_endpoint
+            self.endpoint_sources["register"] = "openapi"
+            
+        debug_endpoint = find_endpoint_by_purpose(endpoints, "debug", self.debug_endpoint)
+        if debug_endpoint != self.debug_endpoint:
+            self.debug_endpoint = debug_endpoint
+            self.endpoint_sources["debug"] = "openapi"
+            
+        login_endpoint = find_endpoint_by_purpose(endpoints, "login", self.login_endpoint)
+        if login_endpoint != self.login_endpoint:
+            self.login_endpoint = login_endpoint
+            self.endpoint_sources["login"] = "openapi"
+            
+        password_change_endpoint = find_endpoint_by_purpose(endpoints, "password_change", self.password_change_endpoint)
+        if password_change_endpoint != self.password_change_endpoint:
+            self.password_change_endpoint = password_change_endpoint
+            self.endpoint_sources["password_change"] = "openapi"
     
     def run(self) -> List[Dict[str, Any]]:
         """
@@ -101,11 +119,50 @@ class Scanner(BaseScanner):
         """
         self.logger.info("Starting unauthorized password change scanner")
         
+        # Skip testing if fallback endpoints are disabled and no endpoints were found in OpenAPI spec
+        if self.disable_fallback_endpoints and not self._has_required_endpoints():
+            self.logger.info("Skipping unauthorized password change tests - fallback endpoints are disabled and required endpoints not found in OpenAPI specification")
+            self.findings.append({
+                "vulnerability": "Unauthorized Password Change Scanner Skipped",
+                "severity": "INFO",
+                "endpoint": "N/A",
+                "description": "The unauthorized password change scanner was skipped because fallback endpoints are disabled and the required endpoints were not found in the OpenAPI specification."
+            })
+            return self.findings
+            
         # Test for unauthorized password change vulnerability
         self._test_unauthorized_password_change()
         
         # Return findings
         return self.findings
+        
+    def _has_required_endpoints(self) -> bool:
+        """
+        Check if all required endpoints were found in the OpenAPI specification.
+        
+        Returns:
+            True if all required endpoints were found, False otherwise
+        """
+        # Check if endpoints were found in the OpenAPI spec (not using fallback values)
+        endpoints_from_openapi = True
+        
+        # Check if debug endpoint is using the fallback value
+        if self.debug_endpoint == "/users/v1/_debug" and "debug" not in self.endpoint_sources:
+            endpoints_from_openapi = False
+            
+        # Check if register endpoint is using the fallback value
+        if self.register_endpoint == "/users/v1/register" and "register" not in self.endpoint_sources:
+            endpoints_from_openapi = False
+            
+        # Check if login endpoint is using the fallback value
+        if self.login_endpoint == "/users/v1/login" and "login" not in self.endpoint_sources:
+            endpoints_from_openapi = False
+            
+        # Check if password change endpoint is using the fallback value
+        if self.password_change_endpoint == "/users/v1/{username}/password" and "password_change" not in self.endpoint_sources:
+            endpoints_from_openapi = False
+            
+        return endpoints_from_openapi
     
     def _get_existing_accounts(self) -> List[Dict[str, Any]]:
         """
