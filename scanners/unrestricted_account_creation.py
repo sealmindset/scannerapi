@@ -49,6 +49,15 @@ class Scanner(BaseScanner):
         self.test_count = config.get("test_count", 15)  # Increased from 5 to 15 for better detection
         self.test_delay = config.get("test_delay", 0.5)  # Reduced from 1.0 to 0.5 for faster testing
         
+        # Rate limiting adaptation configuration
+        self.adapt_to_rate_limiting = config.get("adapt_to_rate_limiting", True)  # Auto-adjust to rate limiting
+        self.initial_delay = self.test_delay  # Store initial delay for reference
+        self.max_delay = config.get("max_delay", 10.0)  # Maximum delay to try (in seconds)
+        self.min_delay = config.get("min_delay", 0.1)  # Minimum delay to try (in seconds)
+        self.delay_increment = config.get("delay_increment", 0.5)  # How much to increase delay when rate limited
+        self.delay_decrement = config.get("delay_decrement", 0.1)  # How much to decrease delay when testing optimal rate
+        self.success_threshold = config.get("success_threshold", 3)  # Number of successful requests needed to confirm a working rate
+        
         # Aggressive test configuration for rate limiting detection
         self.aggressive_test_count = config.get("aggressive_test_count", 30)  # For aggressive testing
         self.aggressive_test_delay = config.get("aggressive_test_delay", 0.1)  # Very short delay for aggressive testing
@@ -60,6 +69,9 @@ class Scanner(BaseScanner):
         
         # Additional fields to include in the request
         self.additional_fields = config.get("additional_fields", {})
+        
+        # Track successful creation rates
+        self.creation_rates = []  # Will store tuples of (delay, requests_per_second)
         
         # Success indicators with expanded defaults
         self.success_status_codes = config.get("success_status_codes", [200, 201, 202, 204])
@@ -827,6 +839,7 @@ class Scanner(BaseScanner):
         # Two-phase testing approach:
         # 1. Normal testing with moderate speed
         # 2. Aggressive testing with very rapid requests if normal testing doesn't trigger rate limiting
+        # 3. (New) If rate limiting is detected, adapt and find optimal creation rate
         
         # Phase 1: Normal testing
         self.logger.info(f"Phase 1: Normal rate limiting test with {self.test_count} requests")
@@ -835,6 +848,12 @@ class Scanner(BaseScanner):
             self.test_delay,
             "normal"
         )
+        
+        # Calculate and record the creation rate
+        if successful_creations > 0:
+            requests_per_second = 1.0 / self.test_delay
+            self.creation_rates.append((self.test_delay, requests_per_second))
+            self.logger.info(f"Normal testing rate: {requests_per_second:.2f} requests/second ({successful_creations} successful)")
         
         # If rate limiting wasn't detected in normal testing, try aggressive testing
         if not rate_limited and successful_creations >= self.test_count:
@@ -850,6 +869,12 @@ class Scanner(BaseScanner):
                 "aggressive"
             )
             
+            # Calculate and record the aggressive creation rate
+            if aggressive_successful > 0:
+                aggressive_requests_per_second = 1.0 / self.aggressive_test_delay
+                self.creation_rates.append((self.aggressive_test_delay, aggressive_requests_per_second))
+                self.logger.info(f"Aggressive testing rate: {aggressive_requests_per_second:.2f} requests/second ({aggressive_successful} successful)")
+            
             # Update successful creations count
             total_successful = successful_creations + aggressive_successful
             
@@ -858,6 +883,39 @@ class Scanner(BaseScanner):
                 self.logger.info(f"Rate limiting detected during aggressive testing after {aggressive_successful} successful creations")
                 # This is not a vulnerability since rate limiting was eventually triggered
                 self.logger.info("Rate limiting is implemented but only triggered under aggressive load")
+                
+                # If auto-adaptation is enabled, find the optimal rate
+                if self.adapt_to_rate_limiting:
+                    self.logger.info("Phase 3: Adapting to rate limiting to find optimal creation rate")
+                    optimal_delay, optimal_rate, optimal_evidence = self._find_optimal_creation_rate()
+                    
+                    # Add finding with the optimal rate information
+                    self.add_finding(
+                        vulnerability="Rate-Limited Account Creation",
+                        severity="MEDIUM",
+                        endpoint=self.endpoint,
+                        details=f"The API implements rate limiting for account creation, but accounts can still be created at a rate of {optimal_rate:.2f} accounts per second (one every {optimal_delay:.2f} seconds). While rate limiting is present, it may not be strict enough to prevent automated account creation.",
+                        evidence={
+                            "normal_test": {
+                                "successful_creations": successful_creations,
+                                "test_count": self.test_count,
+                                "delay_between_requests": f"{self.test_delay} seconds",
+                                "requests_per_second": f"{1.0/self.test_delay:.2f}"
+                            },
+                            "aggressive_test": {
+                                "successful_creations": aggressive_successful,
+                                "test_count": self.aggressive_test_count,
+                                "delay_between_requests": f"{self.aggressive_test_delay} seconds",
+                                "requests_per_second": f"{1.0/self.aggressive_test_delay:.2f}"
+                            },
+                            "optimal_rate": {
+                                "delay_between_requests": f"{optimal_delay:.2f} seconds",
+                                "requests_per_second": f"{optimal_rate:.2f}",
+                                "test_details": optimal_evidence
+                            }
+                        },
+                        remediation="Consider implementing stricter rate limiting for account creation. The current rate allows for automated account creation, albeit at a reduced rate. Implement additional protections such as CAPTCHA, email verification, or IP-based rate limiting."
+                    )
             else:
                 # No rate limiting detected even with aggressive testing
                 self.add_finding(
@@ -870,12 +928,14 @@ class Scanner(BaseScanner):
                             "successful_creations": successful_creations,
                             "test_count": self.test_count,
                             "delay_between_requests": f"{self.test_delay} seconds",
+                            "requests_per_second": f"{1.0/self.test_delay:.2f}",
                             "response_details": response_details
                         },
                         "aggressive_test": {
                             "successful_creations": aggressive_successful,
                             "test_count": self.aggressive_test_count,
                             "delay_between_requests": f"{self.aggressive_test_delay} seconds",
+                            "requests_per_second": f"{1.0/self.aggressive_test_delay:.2f}",
                             "response_details": aggressive_response_details
                         },
                         "total_successful_creations": total_successful
@@ -885,9 +945,123 @@ class Scanner(BaseScanner):
         elif rate_limited:
             # Rate limiting was detected in normal testing - this is good
             self.logger.info(f"Rate limiting properly implemented, triggered after {successful_creations} account creations")
+            
+            # If auto-adaptation is enabled, find the optimal rate
+            if self.adapt_to_rate_limiting:
+                self.logger.info("Phase 3: Adapting to rate limiting to find optimal creation rate")
+                optimal_delay, optimal_rate, optimal_evidence = self._find_optimal_creation_rate()
+                
+                # Add finding with the optimal rate information
+                self.add_finding(
+                    vulnerability="Rate-Limited Account Creation",
+                    severity="MEDIUM",
+                    endpoint=self.endpoint,
+                    details=f"The API implements rate limiting for account creation, but accounts can still be created at a rate of {optimal_rate:.2f} accounts per second (one every {optimal_delay:.2f} seconds). While rate limiting is present, it may not be strict enough to prevent automated account creation.",
+                    evidence={
+                        "normal_test": {
+                            "successful_creations": successful_creations,
+                            "test_count": self.test_count,
+                            "delay_between_requests": f"{self.test_delay} seconds",
+                            "requests_per_second": f"{1.0/self.test_delay:.2f}",
+                            "response_details": response_details
+                        },
+                        "optimal_rate": {
+                            "delay_between_requests": f"{optimal_delay:.2f} seconds",
+                            "requests_per_second": f"{optimal_rate:.2f}",
+                            "test_details": optimal_evidence
+                        }
+                    },
+                    remediation="Consider implementing stricter rate limiting for account creation. The current rate allows for automated account creation, albeit at a reduced rate. Implement additional protections such as CAPTCHA, email verification, or IP-based rate limiting."
+                )
         else:
             # Some other issue prevented testing
             self.logger.warn(f"Rate limit testing inconclusive: only {successful_creations} accounts created successfully")
+    
+    def _find_optimal_creation_rate(self) -> Tuple[float, float, List[Dict[str, Any]]]:
+        """Find the optimal rate at which accounts can be created without triggering rate limiting.
+        
+        Returns:
+            Tuple containing:
+                - Optimal delay between requests (seconds)
+                - Optimal rate (requests per second)
+                - Evidence of testing
+        """
+        self.logger.info("Finding optimal account creation rate that avoids rate limiting")
+        
+        # Start with a conservative delay (higher than what triggered rate limiting)
+        current_delay = min(self.test_delay * 2, self.max_delay)
+        optimal_delay = None
+        optimal_rate = 0
+        all_evidence = []
+        
+        # Binary search approach to find optimal rate
+        min_delay = self.min_delay
+        max_delay = self.max_delay
+        
+        # First, find a working delay that doesn't trigger rate limiting
+        while min_delay <= max_delay:
+            self.logger.info(f"Testing creation rate with {current_delay:.2f} seconds delay")
+            
+            # Wait a bit before trying a new rate to avoid false positives from cumulative rate limiting
+            time.sleep(3.0)
+            
+            # Try to create a few accounts with this delay
+            rate_limited, successful, evidence = self._perform_rate_limit_test(
+                self.success_threshold,  # Just need a few successful requests to confirm it works
+                current_delay,
+                f"optimal_{current_delay:.2f}"
+            )
+            
+            all_evidence.extend(evidence)
+            
+            if rate_limited:
+                # This delay still triggers rate limiting, increase it
+                min_delay = current_delay + self.delay_increment
+                self.logger.info(f"Rate limiting still triggered at {current_delay:.2f}s delay, increasing")
+            else:
+                # This delay works, record it and try a faster rate
+                optimal_delay = current_delay
+                optimal_rate = 1.0 / current_delay
+                max_delay = current_delay - self.delay_decrement
+                self.logger.info(f"Found working delay: {current_delay:.2f}s ({optimal_rate:.2f} req/sec)")
+                
+                # Record this successful rate
+                self.creation_rates.append((current_delay, optimal_rate))
+            
+            # Update current delay for next iteration (midpoint of new range)
+            current_delay = (min_delay + max_delay) / 2
+            
+            # If we've narrowed down to a small range, stop
+            if max_delay - min_delay < self.delay_decrement:
+                break
+        
+        # If we didn't find a working delay, use the most conservative one
+        if optimal_delay is None:
+            optimal_delay = self.max_delay
+            optimal_rate = 1.0 / optimal_delay
+            self.logger.info(f"Could not find optimal rate, using conservative {optimal_delay:.2f}s delay ({optimal_rate:.2f} req/sec)")
+        
+        # Verify the optimal rate with a larger sample
+        self.logger.info(f"Verifying optimal rate: {optimal_rate:.2f} req/sec ({optimal_delay:.2f}s delay)")
+        verification_count = min(10, self.test_count)  # Don't create too many accounts
+        
+        rate_limited, successful, evidence = self._perform_rate_limit_test(
+            verification_count,
+            optimal_delay,
+            "optimal_verification"
+        )
+        
+        all_evidence.extend(evidence)
+        
+        if rate_limited:
+            self.logger.info(f"Rate limiting triggered during verification, adjusting optimal rate")
+            # If rate limiting was triggered during verification, use a more conservative rate
+            optimal_delay = optimal_delay * 1.5
+            optimal_rate = 1.0 / optimal_delay
+        else:
+            self.logger.info(f"Verified optimal rate: {optimal_rate:.2f} req/sec ({successful} accounts created successfully)")
+        
+        return optimal_delay, optimal_rate, all_evidence
     
     def _perform_rate_limit_test(self, count: int, delay: float, test_type: str) -> Tuple[bool, int, List[Dict[str, Any]]]:
         """Helper method to perform rate limit testing with specified parameters.

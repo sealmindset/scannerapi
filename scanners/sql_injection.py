@@ -245,6 +245,43 @@ class Scanner(BaseScanner):
         """
         self.logger.info(f"Testing endpoint {endpoint} for SQL injection")
         
+        # First, make an initial request to check if the endpoint is worth testing further
+        try:
+            # Make an initial request with a simple payload to check response code
+            initial_payload = "test"
+            initial_test_endpoint = endpoint
+            params = {}
+            
+            # If there's a path parameter, replace it with the initial payload
+            if "{" in endpoint and "}" in endpoint:
+                param_name = re.search(r"\{([^}]+)\}", endpoint).group(1)
+                initial_test_endpoint = endpoint.replace(f"{{{param_name}}}", initial_payload)
+            else:
+                # For endpoints without path parameters, use a query parameter
+                params = {"q": initial_payload}
+            
+            self.logger.debug(f"Making initial test request to: {initial_test_endpoint}")
+            initial_response = self._make_request(
+                method="GET",
+                endpoint=initial_test_endpoint,
+                params=params if params else None,
+                timeout=10,
+                capture_for_evidence=True
+            )
+            
+            # Check if the endpoint returns a status code that indicates we should stop testing
+            if initial_response.status_code in [400, 404, 405]:
+                self.logger.info(f"Skipping further testing for endpoint {endpoint} - received status code {initial_response.status_code}")
+                return None
+                
+            # If the endpoint doesn't return 422, log it but continue testing as it might still be vulnerable
+            if initial_response.status_code != 422:
+                self.logger.debug(f"Endpoint {endpoint} returned status code {initial_response.status_code} (not 422), but continuing testing")
+                
+        except Exception as e:
+            self.logger.warning(f"Error during initial test of {endpoint}: {str(e)}")
+            # Continue with testing despite the error, as the endpoint might still be vulnerable
+        
         # Replace path parameters with SQL injection payloads
         if "{" in endpoint and "}" in endpoint:
             # Extract the parameter name
@@ -293,6 +330,29 @@ class Scanner(BaseScanner):
             param_names = ["q", "query", "search", "id", "user", "username", "name", "filter", "sort", "order"]
             
             for param_name in param_names:
+                # Make an initial request with a non-malicious value to check status code
+                try:
+                    initial_response = self._make_request(
+                        method="GET",
+                        endpoint=endpoint,
+                        params={param_name: "test"},
+                        timeout=10,
+                        capture_for_evidence=True
+                    )
+                    
+                    # Skip this parameter if the endpoint returns a status code that indicates we should stop testing
+                    if initial_response.status_code in [400, 404, 405]:
+                        self.logger.info(f"Skipping parameter {param_name} for endpoint {endpoint} - received status code {initial_response.status_code}")
+                        continue
+                        
+                    # If the endpoint doesn't return 422, log it but continue testing as it might still be vulnerable
+                    if initial_response.status_code != 422:
+                        self.logger.debug(f"Parameter {param_name} for endpoint {endpoint} returned status code {initial_response.status_code} (not 422), but continuing testing")
+                        
+                except Exception as e:
+                    self.logger.warning(f"Error during initial test of {endpoint}?{param_name}=test: {str(e)}")
+                    # Continue with testing despite the error, as the endpoint might still be vulnerable
+                
                 for payload in self.payloads:
                     self.logger.debug(f"Testing query parameter injection: {endpoint}?{param_name}={payload}")
                     
@@ -330,6 +390,27 @@ class Scanner(BaseScanner):
         
         # Test POST requests with JSON body
         try:
+            # Make an initial POST request with non-malicious data to check status code
+            initial_json_data = {"username": "test_user", "search": "test_query", "query": "test_value"}
+            
+            self.logger.debug(f"Making initial POST test request to: {endpoint}")
+            initial_response = self._make_request(
+                method="POST",
+                endpoint=endpoint,
+                json_data=initial_json_data,
+                timeout=10,
+                capture_for_evidence=True
+            )
+            
+            # Skip POST testing if the endpoint returns a status code that indicates we should stop testing
+            if initial_response.status_code in [400, 404, 405]:
+                self.logger.info(f"Skipping POST testing for endpoint {endpoint} - received status code {initial_response.status_code}")
+                return None
+                
+            # If the endpoint doesn't return 422, log it but continue testing as it might still be vulnerable
+            if initial_response.status_code != 422:
+                self.logger.debug(f"POST to endpoint {endpoint} returned status code {initial_response.status_code} (not 422), but continuing testing")
+            
             # Test with a simple JSON body containing a SQL injection payload
             for payload in self.payloads[:5]:  # Use fewer payloads for POST to reduce test time
                 json_data = {"username": payload, "search": payload, "query": payload}
@@ -443,6 +524,43 @@ class Scanner(BaseScanner):
             Evidence of vulnerability if found, None otherwise
         """
         self.logger.info(f"Testing endpoint {endpoint} for time-based SQL injection")
+        
+        # Make an initial request to check if the endpoint is worth testing further
+        try:
+            # Make an initial request with a simple payload to check response code
+            initial_payload = "test"
+            initial_test_endpoint = endpoint
+            params = {}
+            
+            # If there's a path parameter, replace it with the initial payload
+            if "{" in endpoint and "}" in endpoint:
+                param_name = re.search(r"\{([^}]+)\}", endpoint).group(1)
+                initial_test_endpoint = endpoint.replace(f"{{{param_name}}}", initial_payload)
+            else:
+                # For endpoints without path parameters, use a query parameter
+                params = {"q": initial_payload}
+            
+            self.logger.debug(f"Making initial test request for time-based injection to: {initial_test_endpoint}")
+            initial_response = self._make_request(
+                method="GET",
+                endpoint=initial_test_endpoint,
+                params=params if params else None,
+                timeout=10,
+                capture_for_evidence=True
+            )
+            
+            # Check if the endpoint returns a status code that indicates we should stop testing
+            if initial_response.status_code in [400, 404, 405]:
+                self.logger.info(f"Skipping time-based injection testing for endpoint {endpoint} - received status code {initial_response.status_code}")
+                return None
+                
+            # If the endpoint doesn't return 422, log it but continue testing as it might still be vulnerable
+            if initial_response.status_code != 422:
+                self.logger.debug(f"Endpoint {endpoint} returned status code {initial_response.status_code} (not 422) for time-based testing, but continuing")
+                
+        except Exception as e:
+            self.logger.warning(f"Error during initial test for time-based injection of {endpoint}: {str(e)}")
+            # Continue with testing despite the error, as the endpoint might still be vulnerable
         
         # Time-based payloads for different databases
         time_payloads = [
