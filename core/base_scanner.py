@@ -9,8 +9,10 @@ import time
 import os
 import uuid
 import datetime
+import random
+import string
 from abc import ABC, abstractmethod
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional, Union, Tuple
 
 import requests
 from requests.exceptions import RequestException, Timeout, ConnectionError
@@ -23,6 +25,27 @@ from core.exceptions import (
     ScannerTimeoutError,
     ScannerRateLimitError
 )
+from core.auth_handler import create_auth_handler, AuthHandler
+
+# Import the account cache
+try:
+    from core.account_cache import account_cache
+except ImportError:
+    # For backwards compatibility, create a simple in-memory cache if the module doesn't exist
+    class SimpleCache:
+        def __init__(self):
+            self.accounts = []
+        
+        def add_account(self, account):
+            self.accounts.append(account)
+        
+        def get_account(self, endpoint=None):
+            return self.accounts[0] if self.accounts else None
+        
+        def get_all_accounts(self):
+            return self.accounts
+    
+    account_cache = SimpleCache()
 
 
 class BaseScanner(ABC):
@@ -69,30 +92,124 @@ class BaseScanner(ABC):
     
     def _setup_auth(self) -> None:
         """Set up authentication for API requests."""
-        auth_type = self.auth.get("type", "none")
+        # Create the auth handler
+        self.auth_handler = create_auth_handler(self.base_url, self.auth)
         
+        # Set up the session with initial auth headers if available
+        auth_headers = self.auth_handler.get_auth_header()
+        if auth_headers:
+            self.session.headers.update(auth_headers)
+            self.logger.debug(f"Using authentication headers: {auth_headers}")
+        else:
+            self.logger.debug("No initial authentication headers configured")
+            
+        # Log the authentication type
+        auth_type = self.auth.get("type", "none")
         if auth_type == "basic":
             username = self.auth.get("username", "")
-            password = self.auth.get("password", "")
-            self.session.auth = (username, password)
             self.logger.debug(f"Using Basic authentication for {username}")
-        
         elif auth_type == "bearer":
-            token = self.auth.get("token", "")
-            self.session.headers.update({"Authorization": f"Bearer {token}"})
             self.logger.debug("Using Bearer token authentication")
-        
         elif auth_type == "api_key":
             header_name = self.auth.get("header_name", "X-API-Key")
-            header_value = self.auth.get("header_value", "")
-            self.session.headers.update({header_name: header_value})
             self.logger.debug(f"Using API Key authentication with header {header_name}")
-        
         elif auth_type == "none":
             self.logger.debug("No authentication configured")
-        
         else:
             self.logger.warn(f"Unsupported authentication type: {auth_type}")
+    
+    def get_or_create_test_account(self, endpoint: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Get a cached test account or create a new one if none exists.
+        
+        This helper method can be used by all scanners to get or create test accounts,
+        which improves efficiency and reliability when testing APIs that have rate
+        limiting or other restrictions.
+        
+        Args:
+            endpoint: Optional endpoint for which the account was created
+            
+        Returns:
+            A dictionary containing account credentials if successful, None otherwise
+        """
+        # Check if we have common fields configured
+        if not hasattr(self, 'username_field') or not hasattr(self, 'password_field'):
+            # Get common fields from config
+            self.register_endpoint = self.config.get("register_endpoint", "users")
+            self.login_endpoint = self.config.get("login_endpoint", "login")
+            self.username_field = self.config.get("username_field", "username")
+            self.email_field = self.config.get("email_field", "email")
+            self.password_field = self.config.get("password_field", "password")
+            self.additional_fields = self.config.get("additional_fields", {})
+            
+            # Initialize created accounts list
+            if not hasattr(self, 'created_accounts'):
+                self.created_accounts = []
+        
+        # Use the provided endpoint or the register endpoint
+        target_endpoint = endpoint or getattr(self, 'register_endpoint', None)
+        if not target_endpoint:
+            self.logger.warning("No registration endpoint configured, cannot create test account")
+            return None
+            
+        # First check if we have a cached account for this endpoint
+        cached_account = account_cache.get_account(target_endpoint)
+        if cached_account:
+            self.logger.info(f"Using cached account: {cached_account.get('username', cached_account.get('email'))}")
+            return cached_account
+            
+        # No cached account, create a new one
+        self.logger.info("No cached account found, creating a new test account")
+        
+        # Create a test account with unique identifiers
+        timestamp = int(time.time())
+        random_suffix = ''.join(random.choices(string.ascii_lowercase, k=6))
+        username = f"test_user_{timestamp}_{random_suffix}"
+        email = f"{username}@example.com"
+        password = "Test@123456"
+        
+        payload = {
+            self.username_field: username,
+            self.email_field: email,
+            self.password_field: password
+        }
+        
+        # Add additional fields
+        payload.update(self.additional_fields)
+        
+        try:
+            response = self._make_request(
+                method="POST",
+                endpoint=target_endpoint,
+                json_data=payload
+            )
+            
+            if response.status_code < 400:  # Any 2xx or 3xx status code
+                account_data = {
+                    "username": username,
+                    "email": email,
+                    "password": password,
+                    "endpoint": target_endpoint,
+                    "created_by": self.__class__.__name__,
+                    "response_code": response.status_code
+                }
+                
+                # Add to global account cache
+                account_cache.add_account(account_data)
+                
+                # Add to local created accounts list
+                if hasattr(self, 'created_accounts'):
+                    self.created_accounts.append(account_data)
+                
+                self.logger.info(f"Successfully created test account: {username}")
+                return account_data
+            else:
+                self.logger.warning(f"Failed to create test account: {username}, status code: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Error creating test account: {str(e)}")
+            return None
     
     def _make_request(
         self,
@@ -107,7 +224,8 @@ class BaseScanner(ABC):
         allow_redirects: bool = True,
         max_retries: int = 3,
         retry_delay: float = 1.0,
-        capture_for_evidence: bool = False
+        capture_for_evidence: bool = False,
+        try_auth_if_needed: bool = True
     ) -> requests.Response:
         """
         Make an HTTP request to the target API.
@@ -135,6 +253,10 @@ class BaseScanner(ABC):
             ScannerRateLimitError: If rate limit is exceeded
             ScannerExecutionError: For other request errors
         """
+        # Handle simulation mode
+        if self.simulate_server:
+            return self._simulate_response(method, endpoint, data, json_data, params)
+            
         # Use default values if not specified
         timeout = timeout if timeout is not None else self.timeout
         verify = verify if verify is not None else self.verify_ssl
@@ -170,7 +292,39 @@ class BaseScanner(ABC):
             "json": json_data
         } if capture_for_evidence else None
         
-        # Make request with retries
+        # If we should try authentication intelligently
+        if try_auth_if_needed:
+            # Use the auth handler to make the request with intelligent auth handling
+            response, auth_used = self.auth_handler.handle_auth_for_request(
+                method=method,
+                endpoint=endpoint,
+                data=json_data if json_data else data,
+                params=params,
+                headers=request_headers,
+                retry_auth=True
+            )
+            
+            if response:
+                if auth_used:
+                    self.logger.debug(f"Request to {endpoint} used authentication after detecting it was required")
+                
+                # Store response details for evidence if needed
+                if capture_for_evidence:
+                    response_details = {
+                        "status_code": response.status_code,
+                        "headers": dict(response.headers),
+                        "content_length": len(response.content),
+                        "elapsed": response.elapsed.total_seconds(),
+                        "body": response.text[:10000] if hasattr(response, 'text') else "<binary content>"
+                    }
+                    
+                    # Return both the response and the captured details
+                    response._request_details = request_details
+                    response._response_details = response_details
+                
+                return response
+        
+        # Fall back to regular request handling if auth handler didn't work or we're not using it
         retries = 0
         while retries <= max_retries:
             try:

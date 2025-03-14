@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 
 from core.base_scanner import BaseScanner
 from core.openapi import find_endpoint_by_purpose
+from core.account_cache import account_cache
 
 # Try to import optional dependencies
 HAS_JWT = False
@@ -85,9 +86,11 @@ class Scanner(BaseScanner):
         # Field names in requests/responses
         self.username_field = config.get("username_field", "username")
         self.password_field = config.get("password_field", "password")
+        self.email_field = config.get("email_field", "email")
         self.access_token_field = config.get("access_token_field", "auth_token")
         self.refresh_token_field = config.get("refresh_token_field", "refresh_token")
         self.id_token_field = config.get("id_token_field", "id_token")
+        self.additional_fields = config.get("additional_fields", {})
         
         # Success indicators
         self.success_status_codes = config.get("success_status_codes", [200, 201, 204])
@@ -95,7 +98,10 @@ class Scanner(BaseScanner):
         # Test user credentials
         timestamp = int(time.time())
         random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
-        self.test_username = config.get("test_username", f"test_user_{timestamp}_{random_suffix}")
+        username = f"test_user_{timestamp}_{random_suffix}"
+        # For Snorefox API, the username is actually the email
+        self.test_username = config.get("test_username", f"{username}@example.com")
+        self.test_email = self.test_username  # Set email to be the same as username
         self.test_password = config.get("test_password", f"Test@{timestamp}")
         self.test_email = f"{self.test_username}@example.com"
         
@@ -626,14 +632,41 @@ class Scanner(BaseScanner):
         self._check_jwt_information_disclosure(access_token, id_token)
     
     def _register_test_user(self) -> None:
-        """Register a test user for JWT testing."""
-        self.logger.info(f"Registering test user: {self.test_username}")
+        """Register a test user for JWT testing or use a cached account."""
+        # First check if we have a cached account
+        cached_account = account_cache.get_account(self.register_endpoint)
+        if cached_account:
+            self.logger.info(f"Using cached account: {cached_account.get('username', cached_account.get('email'))}")
+            self.test_username = cached_account.get('username')
+            self.test_password = cached_account.get('password')
+            self.test_email = cached_account.get('email')
+            return
+            
+        # Try using the base scanner helper method
+        account = self.get_or_create_test_account(self.register_endpoint)
+        if account:
+            self.logger.info(f"Using account from base scanner: {account.get('username')}")
+            self.test_username = account.get('username')
+            self.test_password = account.get('password')
+            self.test_email = account.get('email')
+            return
+            
+        # If no cached account and base method failed, create a new one
+        self.logger.info(f"No cached account found, registering test user: {self.test_username}")
         
+        # For Snorefox API, the username field is actually the email
+        # Make sure we're using the email field correctly
         payload = {
-            self.username_field: self.test_username,
+            self.username_field: self.test_username,  # This is the email for Snorefox API
             self.password_field: self.test_password,
-            "email": self.test_email
+            self.email_field: self.test_username  # Ensure email field is set to the same value
         }
+        
+        # Add additional fields
+        payload.update(self.additional_fields)
+        
+        # Log the payload for debugging
+        self.logger.info(f"Registration payload: {json.dumps(payload)}")
         
         try:
             response = self._make_request(
@@ -642,10 +675,33 @@ class Scanner(BaseScanner):
                 json_data=payload
             )
             
+            # Log the response status and body for debugging
+            response_body = response.text[:200] + "..." if len(response.text) > 200 else response.text
+            self.logger.info(f"Registration response: {response.status_code} - {response_body}")
+            
             if response.status_code in self.success_status_codes:
                 self.logger.info(f"Successfully registered test user: {self.test_username}")
+                
+                # Add to account cache
+                account_data = {
+                    "username": self.test_username,
+                    "email": self.test_username,  # For Snorefox API, email is the same as username
+                    "password": self.test_password,
+                    "endpoint": self.register_endpoint,
+                    "created_by": self.__class__.__name__,
+                    "response_code": response.status_code
+                }
+                account_cache.add_account(account_data)
+                
+                # Wait a moment for the user to be fully registered in the system
+                time.sleep(0.5)
             else:
                 self.logger.warning(f"Failed to register test user: {self.test_username}, status code: {response.status_code}")
+                self.logger.warning(f"Response body: {response.text[:500]}")
+                
+                # Check for specific error messages that might help diagnose the issue
+                if "already exists" in response.text.lower() or "already registered" in response.text.lower():
+                    self.logger.info("User already exists, will attempt to login with these credentials")
         except Exception as e:
             self.logger.warning(f"Failed to register test user: {str(e)}")
     
@@ -658,10 +714,14 @@ class Scanner(BaseScanner):
         """
         self.logger.info(f"Logging in as user '{self.test_username}'")
         
+        # For Snorefox API, ensure we're using the email as the username
         payload = {
-            self.username_field: self.test_username,
+            self.username_field: self.test_username,  # This should be the email for Snorefox API
             self.password_field: self.test_password
         }
+        
+        # Log the payload for debugging
+        self.logger.info(f"Login payload: {json.dumps(payload)}")
         
         try:
             response = self._make_request(
@@ -670,10 +730,15 @@ class Scanner(BaseScanner):
                 json_data=payload
             )
             
+            # Log the response status and partial body for debugging
+            response_body = response.text[:200] + "..." if len(response.text) > 200 else response.text
+            self.logger.info(f"Login response: {response.status_code} - {response_body}")
+            
             if response.status_code in self.success_status_codes:
                 try:
                     data = response.json()
-                    self.logger.debug(f"Login response: {data}")
+                    # Log the full response data structure for debugging
+                    self.logger.debug(f"Login response data structure: {json.dumps(data)}")
                     
                     # Try to extract tokens from the response
                     access_token = None
@@ -685,45 +750,84 @@ class Scanner(BaseScanner):
                     refresh_token = data.get(self.refresh_token_field)
                     id_token = data.get(self.id_token_field)
                     
-                    # If not found, try common field names
+                    # If not found, try common field names for Snorefox API
                     if not access_token:
-                        for field in ["access_token", "accessToken", "token", "jwt", "auth_token", "authToken"]:
+                        for field in ["token", "access_token", "accessToken", "jwt", "auth_token", "authToken"]:
                             if field in data:
                                 access_token = data[field]
                                 self.logger.info(f"Found access token in field: {field}")
                                 break
                     
-                    # Try to find tokens in nested structures
+                    # Try to find tokens in nested structures common in APIs
                     if not access_token and isinstance(data, dict):
-                        for key, value in data.items():
-                            if isinstance(value, dict):
-                                for subkey, subvalue in value.items():
-                                    if "token" in subkey.lower() and isinstance(subvalue, str) and len(subvalue) > 40:
-                                        if "refresh" in subkey.lower():
-                                            refresh_token = subvalue
-                                            self.logger.info(f"Found refresh token in nested field: {key}.{subkey}")
-                                        elif "id" in subkey.lower():
-                                            id_token = subvalue
-                                            self.logger.info(f"Found ID token in nested field: {key}.{subkey}")
-                                        else:
-                                            access_token = subvalue
-                                            self.logger.info(f"Found access token in nested field: {key}.{subkey}")
+                        # Check for nested data structures like {"data": {"token": "..."}} or {"result": {"token": "..."}}
+                        for outer_key in ["data", "result", "response", "user", "auth"]:
+                            if outer_key in data and isinstance(data[outer_key], dict):
+                                nested_data = data[outer_key]
+                                for field in [self.access_token_field, "token", "access_token", "accessToken", "auth_token", "jwt"]:
+                                    if field in nested_data:
+                                        access_token = nested_data.get(field)
+                                        self.logger.info(f"Found access token in nested field: {outer_key}.{field}")
+                                        break
+                        
+                        # If still not found, do a more exhaustive search through all nested structures
+                        if not access_token:
+                            for key, value in data.items():
+                                if isinstance(value, dict):
+                                    for subkey, subvalue in value.items():
+                                        if "token" in subkey.lower() and isinstance(subvalue, str) and len(subvalue) > 40:
+                                            if "refresh" in subkey.lower():
+                                                refresh_token = subvalue
+                                                self.logger.info(f"Found refresh token in nested field: {key}.{subkey}")
+                                            elif "id" in subkey.lower():
+                                                id_token = subvalue
+                                                self.logger.info(f"Found ID token in nested field: {key}.{subkey}")
+                                            else:
+                                                access_token = subvalue
+                                                self.logger.info(f"Found access token in nested field: {key}.{subkey}")
+                    
+                    # As a last resort, look for any string that looks like a JWT token
+                    if not access_token:
+                        self._find_potential_token_in_response(data)
                     
                     if access_token:
                         self.logger.info(f"Successfully logged in as '{self.test_username}' and obtained tokens")
                         return access_token, refresh_token, id_token
                     else:
                         self.logger.warning(f"Login successful but no access token found in response")
+                        # Log the full response for debugging
+                        self.logger.debug(f"Full login response: {response.text}")
                         return None, None, None
-                except ValueError:
-                    self.logger.warning(f"Login successful but response is not valid JSON")
+                except ValueError as e:
+                    self.logger.warning(f"Login successful but response is not valid JSON: {str(e)}")
                     return None, None, None
             else:
                 self.logger.warning(f"Failed to login as '{self.test_username}', status code: {response.status_code}")
+                self.logger.warning(f"Response body: {response.text[:500]}")
                 return None, None, None
         except Exception as e:
             self.logger.error(f"Error logging in as '{self.test_username}': {str(e)}")
             return None, None, None
+            
+    def _find_potential_token_in_response(self, data: Any) -> Optional[str]:
+        """Helper method to recursively search for potential tokens in the response data"""
+        if isinstance(data, dict):
+            for key, value in data.items():
+                # Look for JWT token pattern (base64 segments separated by periods)
+                if isinstance(value, str) and len(value) > 40 and '.' in value and value.count('.') >= 2:
+                    self.logger.info(f"Found potential JWT token in field: {key}")
+                    return value
+                # Recursively search nested dictionaries
+                elif isinstance(value, (dict, list)):
+                    result = self._find_potential_token_in_response(value)
+                    if result:
+                        return result
+        elif isinstance(data, list):
+            for item in data:
+                result = self._find_potential_token_in_response(item)
+                if result:
+                    return result
+        return None
     
     def _is_jwt_token(self, token: str) -> bool:
         """
