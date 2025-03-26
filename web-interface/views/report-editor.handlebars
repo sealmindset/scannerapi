@@ -1,0 +1,246 @@
+{{!-- Report Editor Template --}}
+<div class="container-fluid mt-4">
+  <div class="row mb-4">
+    <div class="col-12">
+      <div class="d-flex justify-content-between align-items-center">
+        <h1>Report Editor - Scan {{scanId}}</h1>
+        <div class="btn-group">
+          <button class="btn btn-primary" id="previewReport">Preview Report</button>
+          <button class="btn btn-success" id="saveAllChanges">Save All Changes</button>
+          <div class="dropdown">
+            <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="downloadDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+              Download Report
+            </button>
+            <ul class="dropdown-menu" aria-labelledby="downloadDropdown">
+              <li><a class="dropdown-item" href="/report-editor/generate/{{scanId}}/html" target="_blank">HTML</a></li>
+              <li><a class="dropdown-item" href="/report-editor/generate/{{scanId}}/json" target="_blank">JSON</a></li>
+              <li><a class="dropdown-item" href="/report-editor/generate/{{scanId}}/pdf" target="_blank">PDF</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row mb-4">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header bg-primary text-white">
+          <h2 class="h4 mb-0">Report Metadata</h2>
+        </div>
+        <div class="card-body">
+          <div class="row">
+            <div class="col-md-6">
+              <div class="form-group">
+                <label for="title">Title</label>
+                <input type="text" class="form-control" id="title" value="{{metadata.title}}" data-field="title">
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="form-group">
+                <label for="target">Target</label>
+                <input type="text" class="form-control" id="target" value="{{metadata.target}}" data-field="target">
+              </div>
+            </div>
+          </div>
+          <div class="row mt-3">
+            <div class="col-md-4">
+              <div class="form-group">
+                <label for="scanId">Scan ID</label>
+                <input type="text" class="form-control" id="scanId" value="{{metadata.scanId}}" readonly>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="form-group">
+                <label for="timestamp">Timestamp</label>
+                <input type="text" class="form-control" id="timestamp" value="{{metadata.timestamp}}" readonly>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="form-group">
+                <label for="vulnerabilityCount">Vulnerabilities</label>
+                <input type="text" class="form-control" id="vulnerabilityCount" value="{{metadata.vulnerabilityCount}}" readonly>
+              </div>
+            </div>
+          </div>
+          <div class="row mt-3">
+            <div class="col-12">
+              <div class="form-group">
+                <label for="summary">Summary</label>
+                <textarea class="form-control" id="summary" rows="3" data-field="summary">{{metadata.summary}}</textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header bg-danger text-white">
+          <h2 class="h4 mb-0">Vulnerabilities</h2>
+        </div>
+        <div class="card-body p-0">
+          <div class="accordion" id="vulnerabilitiesAccordion">
+            {{#each vulnerabilities}}
+            <div class="accordion-item">
+              <h2 class="accordion-header" id="heading{{id}}">
+                <button class="accordion-button {{#if @first}}{{else}}collapsed{{/if}}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{id}}" aria-expanded="{{#if @first}}true{{else}}false{{/if}}" aria-controls="collapse{{id}}">
+                  <div class="d-flex justify-content-between align-items-center w-100">
+                    <span>{{index}}. {{title}}</span>
+                    <span class="badge bg-{{severityClass}} ms-2">{{severity}}</span>
+                  </div>
+                </button>
+              </h2>
+              <div id="collapse{{id}}" class="accordion-collapse collapse {{#if @first}}show{{/if}}" aria-labelledby="heading{{id}}" data-bs-parent="#vulnerabilitiesAccordion">
+                <div class="accordion-body">
+                  <div class="mb-3">
+                    <label for="title{{id}}" class="form-label">Title</label>
+                    <input type="text" class="form-control vuln-field" id="title{{id}}" data-vuln-id="{{id}}" data-field="title" value="{{title}}">
+                  </div>
+                  
+                  <div class="mb-3">
+                    <label for="severity{{id}}" class="form-label">Severity</label>
+                    <select class="form-select vuln-field" id="severity{{id}}" data-vuln-id="{{id}}" data-field="severity">
+                      <option value="Critical" {{#if (eq severity "Critical")}}selected{{/if}}>Critical</option>
+                      <option value="High" {{#if (eq severity "High")}}selected{{/if}}>High</option>
+                      <option value="Medium" {{#if (eq severity "Medium")}}selected{{/if}}>Medium</option>
+                      <option value="Low" {{#if (eq severity "Low")}}selected{{/if}}>Low</option>
+                      <option value="Info" {{#if (eq severity "Info")}}selected{{/if}}>Info</option>
+                    </select>
+                  </div>
+                  
+                  <div class="mb-3">
+                    <label for="description{{id}}" class="form-label">Description</label>
+                    <textarea class="form-control tinymce vuln-field" id="description{{id}}" data-vuln-id="{{id}}" data-field="description" rows="6">{{description}}</textarea>
+                  </div>
+                  
+                  <div class="mb-3">
+                    <label for="remediation{{id}}" class="form-label">Remediation</label>
+                    <textarea class="form-control tinymce vuln-field" id="remediation{{id}}" data-vuln-id="{{id}}" data-field="remediation" rows="6">{{remediation}}</textarea>
+                  </div>
+                  
+                  {{#if evidence}}
+                  <div class="mb-3">
+                    <label class="form-label">Evidence</label>
+                    <div class="evidence-container p-3 bg-light rounded">
+                      <pre class="mb-0"><code>{{json evidence}}</code></pre>
+                    </div>
+                  </div>
+                  {{/if}}
+                  
+                  <div class="d-flex justify-content-end">
+                    <button class="btn btn-primary save-vuln-btn" data-vuln-id="{{id}}">Save Changes</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {{/each}}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Preview Modal -->
+<div class="modal fade" id="previewModal" tabindex="-1" aria-labelledby="previewModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="previewModalLabel">Report Preview</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <iframe id="previewFrame" style="width: 100%; height: 600px; border: none;"></iframe>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <a href="/report-editor/generate/{{scanId}}/html" target="_blank" class="btn btn-primary">Download HTML</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/tinymce/tinymce.min.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // Initialize TinyMCE for rich text editing
+    tinymce.init({
+      selector: '.tinymce',
+      height: 300,
+      menubar: false,
+      plugins: [
+        'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
+        'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
+        'insertdatetime', 'media', 'table', 'code', 'help', 'wordcount'
+      ],
+      toolbar: 'undo redo | formatselect | ' +
+        'bold italic backcolor | alignleft aligncenter ' +
+        'alignright alignjustify | bullist numlist outdent indent | ' +
+        'removeformat | help',
+      content_style: 'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 14px }'
+    });
+    
+    // Save individual vulnerability changes
+    document.querySelectorAll('.save-vuln-btn').forEach(button => {
+      button.addEventListener('click', async function() {
+        const vulnId = this.getAttribute('data-vuln-id');
+        const fields = document.querySelectorAll(`.vuln-field[data-vuln-id="${vulnId}"]`);
+        
+        for (const field of fields) {
+          const fieldName = field.getAttribute('data-field');
+          let content;
+          
+          if (field.classList.contains('tinymce')) {
+            // Get content from TinyMCE
+            const editor = tinymce.get(field.id);
+            content = editor.getContent();
+          } else {
+            content = field.value;
+          }
+          
+          try {
+            const response = await fetch(`/report-editor/update/{{scanId}}/${vulnId}/${fieldName}`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ content })
+            });
+            
+            const result = await response.json();
+            
+            if (!result.success) {
+              alert(`Failed to update ${fieldName}: ${result.message}`);
+            }
+          } catch (error) {
+            console.error(`Error updating ${fieldName}:`, error);
+            alert(`Error updating ${fieldName}: ${error.message}`);
+          }
+        }
+        
+        alert('Changes saved successfully!');
+      });
+    });
+    
+    // Save all changes
+    document.getElementById('saveAllChanges').addEventListener('click', async function() {
+      const saveButtons = document.querySelectorAll('.save-vuln-btn');
+      for (const button of saveButtons) {
+        button.click();
+      }
+    });
+    
+    // Preview report
+    document.getElementById('previewReport').addEventListener('click', function() {
+      const previewFrame = document.getElementById('previewFrame');
+      previewFrame.src = `/report-editor/preview/{{scanId}}`;
+      
+      const previewModal = new bootstrap.Modal(document.getElementById('previewModal'));
+      previewModal.show();
+    });
+  });
+</script>

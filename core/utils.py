@@ -118,7 +118,20 @@ def save_results(results: Dict[str, Any], output_dir: str, output_format: str = 
     filename = f"{scan_id}.{output_format}"
     output_path = os.path.join(output_dir, filename)
     
+    # Ensure the output directory exists
     try:
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        logger.info(f"Ensuring output directory exists: {os.path.dirname(output_path)}")
+    except Exception as e:
+        logger.error(f"Failed to create output directory: {str(e)}")
+        print(f"Error creating output directory: {str(e)}")
+        return ""
+    
+    try:
+        # Log the file we're about to write
+        logger.info(f"Writing results to: {output_path}")
+        print(f"Writing results to: {output_path}")
+        
         with open(output_path, "w") as f:
             if output_format == "json":
                 json.dump(results, f, indent=2)
@@ -152,10 +165,18 @@ def save_results(results: Dict[str, Any], output_dir: str, output_format: str = 
                         f.write(f"  Endpoint: {finding.get('endpoint', 'Unknown')}\n")
                         f.write(f"  Details: {finding.get('details', 'No details provided')}\n\n")
         
-        logger.info(f"Results saved to {output_path}")
-        return output_path
+        # Verify the file was created
+        if os.path.exists(output_path):
+            logger.info(f"Results saved to {output_path}")
+            print(f"Results saved successfully to {output_path}")
+            return output_path
+        else:
+            logger.error(f"File was not created at {output_path}")
+            print(f"Error: File was not created at {output_path}")
+            return ""
     except Exception as e:
         logger.error(f"Failed to save results: {str(e)}")
+        print(f"Error saving results: {str(e)}")
         return ""
 
 

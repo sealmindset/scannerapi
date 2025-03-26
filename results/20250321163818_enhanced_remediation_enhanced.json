@@ -1,0 +1,1359 @@
+{
+  "scan_id": "20250321163818",
+  "target": "http://localhost:5002",
+  "start_time": "2025-03-21T16:36:04.862213",
+  "end_time": "2025-03-21T16:38:18.264307",
+  "duration": 133.40209484100342,
+  "scanners": [
+    {
+      "name": "broken_authentication",
+      "success": true,
+      "duration": 0.6082949638366699,
+      "findings": [],
+      "start_time": "2025-03-21T16:36:04.904454",
+      "end_time": "2025-03-21T16:36:05.512749"
+    },
+    {
+      "name": "broken_access_control",
+      "success": true,
+      "duration": 3.0631589889526367,
+      "findings": [
+        {
+          "vulnerability": "Privilege Escalation During Registration",
+          "severity": "HIGH",
+          "endpoint": "/users/v1/register",
+          "details": "Users can register accounts with administrative privileges by including the 'admin' field in the registration request.",
+          "timestamp": 1742592966.535499,
+          "evidence": {
+            "registration_payload": {
+              "username": "admin_user_1742592964_3x0uzo@example.com",
+              "email": "admin_user_1742592964_3x0uzo@example.com",
+              "password": "REDACTED",
+              "admin": true
+            },
+            "created_user": {
+              "admin": true,
+              "email": "admin_user_1742592964_3x0uzo@example.com",
+              "password": "Admin@1742592964",
+              "username": "admin_user_1742592964_3x0uzo@example.com"
+            }
+          },
+          "remediation": "1. Root Cause Analysis:\nThe root cause of this vulnerability is that the registration endpoint (/users/v1/register) does not properly validate the input fields in the registration request. Specifically, it allows users to include the 'admin' field in the registration request, which should not be possible for regular users. This allows a regular user to escalate their privileges to administrative level during registration, which is a serious security flaw.\n\n2. Step-by-Step Technical Instructions:\n   - Step 1: Identify the code section responsible for handling the registration request in your API.\n   - Step 2: Implement input validation for the registration request. Ensure that the 'admin' field cannot be included in the registration request by regular users. Only system administrators should be able to create new admin accounts.\n   - Step 3: Implement server-side checks to verify the role of the user making the request. Regular users should not be able to create admin accounts.\n   - Step 4: Test the changes to ensure that regular users can no longer escalate their privileges during registration.\n\n3. Code Examples:\nAssuming the API is written in Node.js with Express and MongoDB, the code might look something like this:\n\n```javascript\napp.post('/users/v1/register', async (req, res) => {\n  if (req.body.admin) {\n    return res.status(403).send('Unauthorized field: admin');\n  }\n  \n  const user = new User(req.body);\n  await user.save();\n  res.status(201).send(user);\n});\n```\n\n4. Best Practices:\n   - Always validate user input on the server side. Never trust user input.\n   - Implement role-based access control (RBAC) to restrict what different types of users can do.\n   - Regularly conduct security audits and vulnerability assessments to identify and fix security flaws.\n   - Follow the principle of least privilege, i.e., users should only have the minimum privileges necessary to perform their tasks.\n\n5. References:\n   - OWASP Top 10 - A1:2017-Injection: https://owasp.org/www-project-top-ten/2017/A1_2017-Injection\n   - OWASP API Security Top 10 - BOLA: https://owasp.org/www-project-api-security/\n   - NIST Special Publication 800-162 - Guide to Attribute Based Access Control (ABAC) Definition and Considerations: https://nvlpubs.nist.gov/nistpubs/specialpublications/nist.sp.800-162.pdf",
+          "finding_id": "79d810cd"
+        }
+      ],
+      "start_time": "2025-03-21T16:36:05.513623",
+      "end_time": "2025-03-21T16:36:08.576782"
+    },
+    {
+      "name": "excessive_data_exposure",
+      "success": true,
+      "duration": 0.018487930297851562,
+      "findings": [
+        {
+          "vulnerability": "Excessive Data Exposure - Debug Endpoint",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/_debug",
+          "details": "The API exposes a debug endpoint that returns sensitive user data including password. This endpoint returned data for 103 users, which could lead to unauthorized access to sensitive information.",
+          "timestamp": 1742592968.582849,
+          "evidence": {
+            "sensitive_fields": [
+              "password"
+            ],
+            "total_users_exposed": 103,
+            "status_code": 200,
+            "evidence_file": "/Users/rvance/Documents/scannerapi/results/results_20250321163608.json"
+          },
+          "remediation": "Remove or properly secure debug endpoints in production environments. Implement proper authentication and authorization controls. Consider implementing a separate API for debugging that requires elevated privileges.",
+          "finding_id": "330f5f8e"
+        }
+      ],
+      "start_time": "2025-03-21T16:36:08.576898",
+      "end_time": "2025-03-21T16:36:08.595386"
+    },
+    {
+      "name": "mass_assignment",
+      "success": true,
+      "duration": 12.801577806472778,
+      "findings": [
+        {
+          "vulnerability": "Mass Assignment During Registration",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/register",
+          "details": "The API allows setting admin privileges during user registration via mass assignment.",
+          "timestamp": 1742592981.3970401,
+          "evidence": {
+            "request": {
+              "method": "POST",
+              "endpoint": "/users/v1/register",
+              "url": "http://localhost:5002/users/v1/register",
+              "headers": {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+              },
+              "payload": {
+                "username": "test_mass_reg_1742592980",
+                "email": "test_mass_reg_1742592980@example.com",
+                "password": "Test@1742592980",
+                "admin": true
+              }
+            },
+            "response": {
+              "status_code": 200,
+              "headers": {
+                "Server": "Werkzeug/2.2.3 Python/3.11.11",
+                "Date": "Fri, 21 Mar 2025 21:36:20 GMT",
+                "Content-Type": "application/json",
+                "Content-Length": "92",
+                "Connection": "close"
+              },
+              "body": {
+                "message": "Successfully registered. Login to receive an auth token.",
+                "status": "success"
+              }
+            },
+            "verification": {
+              "method": "GET",
+              "endpoint": "/users/v1/_debug",
+              "url": "http://localhost:5002/users/v1/_debug",
+              "headers": {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+              },
+              "response_code": 200,
+              "response_headers": {
+                "Server": "Werkzeug/2.2.3 Python/3.11.11",
+                "Date": "Fri, 21 Mar 2025 21:36:21 GMT",
+                "Content-Type": "application/json",
+                "Content-Length": "18926",
+                "Connection": "close"
+              },
+              "response_body": {
+                "users": [
+                  {
+                    "admin": false,
+                    "email": "mail1@mail.com",
+                    "password": "NewPass@1742592843",
+                    "username": "name1"
+                  },
+                  {
+                    "admin": false,
+                    "email": "mail2@mail.com",
+                    "password": "pass2",
+                    "username": "name2"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin@mail.com",
+                    "password": "pass1",
+                    "username": "admin"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin_user_1742576297_dzppsu@example.com",
+                    "password": "Admin@1742576297",
+                    "username": "admin_user_1742576297_dzppsu@example.com"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742576297_iv1ivm@example.com",
+                    "password": "Test@1742576297",
+                    "username": "test_user_1742576297_iv1ivm"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742576297@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742576297"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742580572@example.com",
+                    "password": "Test@1742580572",
+                    "username": "test_mass_reg_1742580572"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_user_1742576297_gv1d1v@example.com",
+                    "password": "Test@1742576297",
+                    "username": "test_user_1742576297_gv1d1v"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin_user_1742582439_yr1fb4@example.com",
+                    "password": "Admin@1742582439",
+                    "username": "admin_user_1742582439_yr1fb4@example.com"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742582439_9qqx2p@example.com",
+                    "password": "Test@1742582439",
+                    "username": "test_user_1742582439_9qqx2p"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742582439@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742582439"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742582453@example.com",
+                    "password": "Test@1742582453",
+                    "username": "test_mass_reg_1742582453"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_user_1742582439_arp93z@example.com",
+                    "password": "Test@1742582439",
+                    "username": "test_user_1742582439_arp93z"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin_user_1742583269_2176iq@example.com",
+                    "password": "Admin@1742583269",
+                    "username": "admin_user_1742583269_2176iq@example.com"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742583269_lyh12f@example.com",
+                    "password": "Test@1742583269",
+                    "username": "test_user_1742583269_lyh12f"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742583269@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742583269"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742583284@example.com",
+                    "password": "Test@1742583284",
+                    "username": "test_mass_reg_1742583284"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_user_1742583269_cndaj7@example.com",
+                    "password": "Test@1742583269",
+                    "username": "test_user_1742583269_cndaj7"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin_user_1742583759_2xvv2y@example.com",
+                    "password": "Admin@1742583759",
+                    "username": "admin_user_1742583759_2xvv2y@example.com"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742583759_pbimoj@example.com",
+                    "password": "Test@1742583759",
+                    "username": "test_user_1742583759_pbimoj"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742583759@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742583759"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742583774@example.com",
+                    "password": "Test@1742583774",
+                    "username": "test_mass_reg_1742583774"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_user_1742583759_i1pcuz@example.com",
+                    "password": "Test@1742583759",
+                    "username": "test_user_1742583759_i1pcuz"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin_user_1742584401_xhk2x0@example.com",
+                    "password": "Admin@1742584401",
+                    "username": "admin_user_1742584401_xhk2x0@example.com"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742584401_s334o5@example.com",
+                    "password": "Test@1742584401",
+                    "username": "test_user_1742584401_s334o5"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742584401@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742584401"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742584417@example.com",
+                    "password": "Test@1742584417",
+                    "username": "test_mass_reg_1742584417"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_user_1742584401_1obpt6@example.com",
+                    "password": "Test@1742584401",
+                    "username": "test_user_1742584401_1obpt6"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin_user_1742584996_t97cji@example.com",
+                    "password": "Admin@1742584996",
+                    "username": "admin_user_1742584996_t97cji@example.com"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742584996_571j6d@example.com",
+                    "password": "Test@1742584996",
+                    "username": "test_user_1742584996_571j6d"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742584996@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742584996"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742585011@example.com",
+                    "password": "Test@1742585011",
+                    "username": "test_mass_reg_1742585011"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_user_1742584996_4xqs5x@example.com",
+                    "password": "Test@1742584996",
+                    "username": "test_user_1742584996_4xqs5x"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin_user_1742585349_8924l4@example.com",
+                    "password": "Admin@1742585349",
+                    "username": "admin_user_1742585349_8924l4@example.com"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742585349_pqanxo@example.com",
+                    "password": "Test@1742585349",
+                    "username": "test_user_1742585349_pqanxo"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742585349@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742585349"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742585365@example.com",
+                    "password": "Test@1742585365",
+                    "username": "test_mass_reg_1742585365"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_user_1742585349_h24e9d@example.com",
+                    "password": "Test@1742585349",
+                    "username": "test_user_1742585349_h24e9d"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin_user_1742585754_admodu@example.com",
+                    "password": "Admin@1742585754",
+                    "username": "admin_user_1742585754_admodu@example.com"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742585754_yeii3o@example.com",
+                    "password": "Test@1742585754",
+                    "username": "test_user_1742585754_yeii3o"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742585754@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742585754"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742585769@example.com",
+                    "password": "Test@1742585769",
+                    "username": "test_mass_reg_1742585769"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_user_1742585754_x5lhes@example.com",
+                    "password": "Test@1742585754",
+                    "username": "test_user_1742585754_x5lhes"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin_user_1742586011_x4djta@example.com",
+                    "password": "Admin@1742586011",
+                    "username": "admin_user_1742586011_x4djta@example.com"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742586011_7spmz6@example.com",
+                    "password": "Test@1742586011",
+                    "username": "test_user_1742586011_7spmz6"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742586011@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742586011"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742586027@example.com",
+                    "password": "Test@1742586027",
+                    "username": "test_mass_reg_1742586027"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_user_1742586011_pt9fzg@example.com",
+                    "password": "Test@1742586011",
+                    "username": "test_user_1742586011_pt9fzg"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin_user_1742586417_hfqfln@example.com",
+                    "password": "Admin@1742586417",
+                    "username": "admin_user_1742586417_hfqfln@example.com"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742586417_vkf5q2@example.com",
+                    "password": "Test@1742586417",
+                    "username": "test_user_1742586417_vkf5q2"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742586417@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742586417"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742586432@example.com",
+                    "password": "Test@1742586432",
+                    "username": "test_mass_reg_1742586432"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_user_1742586417_tak9qr@example.com",
+                    "password": "Test@1742586417",
+                    "username": "test_user_1742586417_tak9qr"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin_user_1742586870_d0koe8@example.com",
+                    "password": "Admin@1742586870",
+                    "username": "admin_user_1742586870_d0koe8@example.com"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742586870_maegke@example.com",
+                    "password": "Test@1742586870",
+                    "username": "test_user_1742586870_maegke"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742586870@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742586870"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742586886@example.com",
+                    "password": "Test@1742586886",
+                    "username": "test_mass_reg_1742586886"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_user_1742586870_833zgy@example.com",
+                    "password": "Test@1742586870",
+                    "username": "test_user_1742586870_833zgy"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin_user_1742587580_2hi91r@example.com",
+                    "password": "Admin@1742587580",
+                    "username": "admin_user_1742587580_2hi91r@example.com"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742587580_462ugh@example.com",
+                    "password": "Test@1742587580",
+                    "username": "test_user_1742587580_462ugh"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742587580@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742587580"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742587595@example.com",
+                    "password": "Test@1742587595",
+                    "username": "test_mass_reg_1742587595"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_user_1742587580_atk66m@example.com",
+                    "password": "Test@1742587580",
+                    "username": "test_user_1742587580_atk66m"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin_user_1742588041_gt2yx9@example.com",
+                    "password": "Admin@1742588041",
+                    "username": "admin_user_1742588041_gt2yx9@example.com"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742588041_5ib0nn@example.com",
+                    "password": "Test@1742588041",
+                    "username": "test_user_1742588041_5ib0nn"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742588041@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742588041"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742588056@example.com",
+                    "password": "Test@1742588056",
+                    "username": "test_mass_reg_1742588056"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_user_1742588041_76iicd@example.com",
+                    "password": "Test@1742588041",
+                    "username": "test_user_1742588041_76iicd"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin_user_1742588795_ju9o3v@example.com",
+                    "password": "Admin@1742588795",
+                    "username": "admin_user_1742588795_ju9o3v@example.com"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742588795_nspi84@example.com",
+                    "password": "Test@1742588795",
+                    "username": "test_user_1742588795_nspi84"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742588795@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742588795"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742588811@example.com",
+                    "password": "Test@1742588811",
+                    "username": "test_mass_reg_1742588811"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_user_1742588795_xq0uzi@example.com",
+                    "password": "Test@1742588795",
+                    "username": "test_user_1742588795_xq0uzi"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin_user_1742589141_8sjohi@example.com",
+                    "password": "Admin@1742589141",
+                    "username": "admin_user_1742589141_8sjohi@example.com"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742589141_sfldjm@example.com",
+                    "password": "Test@1742589141",
+                    "username": "test_user_1742589141_sfldjm"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742589141@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742589141"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742589157@example.com",
+                    "password": "Test@1742589157",
+                    "username": "test_mass_reg_1742589157"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_user_1742589141_rnqp60@example.com",
+                    "password": "Test@1742589141",
+                    "username": "test_user_1742589141_rnqp60"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin_user_1742589648_3gtw6b@example.com",
+                    "password": "Admin@1742589648",
+                    "username": "admin_user_1742589648_3gtw6b@example.com"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742589648_byh6uc@example.com",
+                    "password": "Test@1742589648",
+                    "username": "test_user_1742589648_byh6uc"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742589648@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742589648"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742589663@example.com",
+                    "password": "Test@1742589663",
+                    "username": "test_mass_reg_1742589663"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_user_1742589648_cno4x2@example.com",
+                    "password": "Test@1742589648",
+                    "username": "test_user_1742589648_cno4x2"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin_user_1742590267_nrdke9@example.com",
+                    "password": "Admin@1742590267",
+                    "username": "admin_user_1742590267_nrdke9@example.com"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742590267_zhu60n@example.com",
+                    "password": "Test@1742590267",
+                    "username": "test_user_1742590267_zhu60n"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742590267@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742590267"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742590283@example.com",
+                    "password": "Test@1742590283",
+                    "username": "test_mass_reg_1742590283"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_user_1742590267_cz1b84@example.com",
+                    "password": "Test@1742590267",
+                    "username": "test_user_1742590267_cz1b84"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin_user_1742590959_6vtpqs@example.com",
+                    "password": "Admin@1742590959",
+                    "username": "admin_user_1742590959_6vtpqs@example.com"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742590959_36lwaw@example.com",
+                    "password": "Test@1742590959",
+                    "username": "test_user_1742590959_36lwaw"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742590959@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742590959"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742590975@example.com",
+                    "password": "Test@1742590975",
+                    "username": "test_mass_reg_1742590975"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_user_1742590959_xzslu1@example.com",
+                    "password": "Test@1742590959",
+                    "username": "test_user_1742590959_xzslu1"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin_user_1742592062_82ql2k@example.com",
+                    "password": "Admin@1742592062",
+                    "username": "admin_user_1742592062_82ql2k@example.com"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742592062_e156o1@example.com",
+                    "password": "Test@1742592062",
+                    "username": "test_user_1742592062_e156o1"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742592062@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742592062"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742592078@example.com",
+                    "password": "Test@1742592078",
+                    "username": "test_mass_reg_1742592078"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_user_1742592062_8iekl5@example.com",
+                    "password": "Test@1742592062",
+                    "username": "test_user_1742592062_8iekl5"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742592843_sw2fnp@example.com",
+                    "password": "Test@1742592843",
+                    "username": "test_user_1742592843_sw2fnp"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742592843@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742592843"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742592855@example.com",
+                    "password": "Test@1742592855",
+                    "username": "test_mass_reg_1742592855"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_user_1742592843_7c8n59@example.com",
+                    "password": "Test@1742592843",
+                    "username": "test_user_1742592843_7c8n59"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin_user_1742592964_3x0uzo@example.com",
+                    "password": "Admin@1742592964",
+                    "username": "admin_user_1742592964_3x0uzo@example.com"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742592964_jg1yfa@example.com",
+                    "password": "Test@1742592964",
+                    "username": "test_user_1742592964_jg1yfa"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742592964@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742592964"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742592980@example.com",
+                    "password": "Test@1742592980",
+                    "username": "test_mass_reg_1742592980"
+                  }
+                ]
+              },
+              "user": "test_mass_reg_1742592980",
+              "admin_status": true
+            }
+          },
+          "remediation": "1. Root Cause Analysis:\nThe root cause of this vulnerability is the improper handling of user input during the registration process. The API is allowing mass assignment, which means it is accepting a set of parameters and assigning them to user attributes. This can be exploited by an attacker to set admin privileges during user registration, which is a critical security flaw.\n\n2. Step-by-step Technical Instructions for Fixing the Issue:\n\nStep 1: Identify the code responsible for user registration. This will be located at the endpoint /users/v1/register.\n\nStep 2: Modify the registration process to explicitly whitelist the parameters that should be allowed for mass assignment. This will prevent any unintended parameters from being assigned during registration.\n\nStep 3: Remove the ability to set admin privileges during registration. This should be a separate process that is only accessible to existing admins.\n\nStep 4: Test the changes to ensure that they work as expected and do not introduce new vulnerabilities.\n\n3. Code Examples:\n\nAssuming the API is built with a language like Ruby on Rails, the code might look something like this:\n\nBefore:\n```ruby\ndef create\n  @user = User.new(params[:user])\n  @user.save\nend\n```\n\nAfter:\n```ruby\ndef create\n  @user = User.new(user_params)\n  @user.save\nend\n\nprivate\n\ndef user_params\n  params.require(:user).permit(:name, :email, :password)\nend\n```\n\nIn the above example, the `user_params` method is used to whitelist the `:name`, `:email`, and `:password` parameters. Any other parameters passed in the `params[:user]` hash will be ignored.\n\n4. Best Practices:\n\nTo prevent similar issues in the future, follow these best practices:\n\n- Always whitelist parameters for mass assignment. Never allow all parameters to be assigned without explicit permission.\n- Do not allow sensitive attributes to be set during registration or other public-facing processes.\n- Regularly review and update your security practices to keep up with new vulnerabilities and attack methods.\n\n5. References to Relevant Security Standards or Guidelines:\n\nFor more information on preventing mass assignment vulnerabilities, refer to the OWASP (Open Web Application Security Project) guide on Mass Assignment: https://cheatsheetseries.owasp.org/cheatsheets/Mass_Assignment_Cheat_Sheet.html.",
+          "finding_id": "bc811736"
+        }
+      ],
+      "start_time": "2025-03-21T16:36:08.595658",
+      "end_time": "2025-03-21T16:36:21.397236"
+    },
+    {
+      "name": "unauthorized_password_change",
+      "success": true,
+      "duration": 1.0384221076965332,
+      "findings": [
+        {
+          "vulnerability": "Unauthorized Password Change",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/name1/password",
+          "details": "The API allows users to change passwords of other users without proper authorization. User 'test_user_1742592964_sngxf5' was able to change the password of user 'name1'.",
+          "timestamp": 1742592982.435364,
+          "evidence": {
+            "test_user": "test_user_1742592964_sngxf5",
+            "target_user": "name1",
+            "password_change_request": {
+              "endpoint": "/users/v1/name1/password",
+              "method": "PUT",
+              "headers": {
+                "Authorization": "Bearer eyJhbGciOi..."
+              },
+              "payload": {
+                "password": "NewPass@1742592964"
+              }
+            },
+            "verification": {
+              "login_successful": true,
+              "login_endpoint": "/users/v1/login",
+              "login_payload": {
+                "username": "name1",
+                "password": "NewPass@1742592964"
+              }
+            }
+          },
+          "remediation": "1. Root Cause Analysis:\nThe root cause of this vulnerability is a lack of proper access control and authorization checks in the API endpoint. The API endpoint '/users/v1/name1/password' is allowing any user to change the password of any other user. This is a critical security flaw as it allows unauthorized users to gain access to other users' accounts.\n\n2. Step-by-step Technical Instructions:\n\nStep 1: Identify the code segment responsible for password changes in the API. This will likely be in the controller or service layer that handles requests to '/users/v1/{username}/password'.\n\nStep 2: Implement an authorization check before allowing the password change. The check should verify that the authenticated user is the same as the user whose password is being changed, or that the authenticated user has administrative privileges.\n\nStep 3: The authorization check could look something like this (in pseudo-code):\n\n```python\ndef change_password(request, username):\n    authenticated_user = get_authenticated_user(request)\n    if authenticated_user.username != username and not authenticated_user.is_admin:\n        return HTTP_403_FORBIDDEN\n    # proceed with password change\n```\n\nStep 4: After implementing the authorization check, thoroughly test the endpoint to ensure that the vulnerability has been fixed and no new issues have been introduced.\n\n3. Code Examples:\nThe code example provided in step 2 is a simple authorization check that can be implemented in most programming languages and frameworks.\n\n4. Best Practices:\nTo prevent similar issues in the future, follow these best practices:\n\n- Always implement proper access control and authorization checks for all sensitive operations, such as changing passwords, deleting accounts, etc.\n- Regularly conduct security audits and vulnerability assessments of your API.\n- Follow the principle of least privilege, i.e., give users the minimum permissions they need to perform their tasks.\n- Use a standardized, well-tested authentication and authorization library or framework instead of implementing these features from scratch.\n\n5. References:\nFor more information on API security, refer to the OWASP API Security Top 10 (https://owasp.org/www-project-api-security/), a list of the most critical API security risks and their mitigation strategies. Specifically, this vulnerability falls under the category of 'Broken Function Level Authorization' (https://owasp.org/www-project-api-security/#v5-broken-function-level-authorization).",
+          "finding_id": "8508819c"
+        }
+      ],
+      "start_time": "2025-03-21T16:36:21.397319",
+      "end_time": "2025-03-21T16:36:22.435741"
+    },
+    {
+      "name": "unrestricted_account_creation",
+      "success": true,
+      "duration": 115.82707905769348,
+      "findings": [
+        {
+          "vulnerability": "Rate-Limited Account Creation",
+          "severity": "MEDIUM",
+          "endpoint": "/api/users",
+          "details": "The API implements rate limiting for account creation, but accounts can still be created at a rate of 0.07 accounts per second (one every 15.00 seconds). While rate limiting is present, it may not be strict enough to prevent automated account creation.",
+          "timestamp": 1742593098.198623,
+          "evidence": {
+            "normal_test": {
+              "successful_creations": 0,
+              "test_count": 15,
+              "delay_between_requests": "0.5 seconds",
+              "requests_per_second": "2.00",
+              "response_details": [
+                {
+                  "request_number": 1,
+                  "username": "test_normal_1742592992_0@example.com",
+                  "status_code": 404,
+                  "response_time": 0.01753997802734375,
+                  "response_size": 205,
+                  "request": {
+                    "method": "POST",
+                    "url": "http://localhost:5002/api/users",
+                    "headers": {
+                      "User-Agent": "python-requests/2.32.3",
+                      "Accept-Encoding": "gzip, deflate, zstd",
+                      "Accept": "*/*",
+                      "Connection": "keep-alive",
+                      "Content-Length": "137",
+                      "Content-Type": "application/json"
+                    },
+                    "body": {
+                      "username": "test_normal_1742592992_0@example.com",
+                      "email": "test_normal_1742592992_0@example.com",
+                      "password": "Test@1742592992#11ps"
+                    }
+                  },
+                  "response": {
+                    "status_code": 404,
+                    "headers": {
+                      "Server": "Werkzeug/2.2.3 Python/3.11.11",
+                      "Date": "Fri, 21 Mar 2025 21:36:32 GMT",
+                      "Content-Type": "application/problem+json",
+                      "Content-Length": "205",
+                      "Connection": "close"
+                    },
+                    "body": {
+                      "detail": "The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.",
+                      "status": 404,
+                      "title": "Not Found",
+                      "type": "about:blank"
+                    }
+                  }
+                },
+                {
+                  "request_number": 2,
+                  "username": "test_normal_1742592992_1@example.com",
+                  "status_code": 404,
+                  "response_time": 0.014220952987670898,
+                  "response_size": 205,
+                  "request": {
+                    "method": "POST",
+                    "url": "http://localhost:5002/api/users",
+                    "headers": {
+                      "User-Agent": "python-requests/2.32.3",
+                      "Accept-Encoding": "gzip, deflate, zstd",
+                      "Accept": "*/*",
+                      "Connection": "keep-alive",
+                      "Content-Length": "137",
+                      "Content-Type": "application/json"
+                    },
+                    "body": {
+                      "username": "test_normal_1742592992_1@example.com",
+                      "email": "test_normal_1742592992_1@example.com",
+                      "password": "Test@1742592992#mi8f"
+                    }
+                  },
+                  "response": {
+                    "status_code": 404,
+                    "headers": {
+                      "Server": "Werkzeug/2.2.3 Python/3.11.11",
+                      "Date": "Fri, 21 Mar 2025 21:36:33 GMT",
+                      "Content-Type": "application/problem+json",
+                      "Content-Length": "205",
+                      "Connection": "close"
+                    },
+                    "body": {
+                      "detail": "The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.",
+                      "status": 404,
+                      "title": "Not Found",
+                      "type": "about:blank"
+                    }
+                  }
+                }
+              ]
+            },
+            "optimal_rate": {
+              "delay_between_requests": "15.00 seconds",
+              "requests_per_second": "0.07",
+              "test_details": [
+                {
+                  "request_number": 1,
+                  "username": "test_optimal_1.00_1742592996_0@example.com",
+                  "status_code": 404,
+                  "response_time": 0.015514135360717773,
+                  "response_size": 205,
+                  "request": {
+                    "method": "POST",
+                    "url": "http://localhost:5002/api/users",
+                    "headers": {
+                      "User-Agent": "python-requests/2.32.3",
+                      "Accept-Encoding": "gzip, deflate, zstd",
+                      "Accept": "*/*",
+                      "Connection": "keep-alive",
+                      "Content-Length": "149",
+                      "Content-Type": "application/json"
+                    },
+                    "body": {
+                      "username": "test_optimal_1.00_1742592996_0@example.com",
+                      "email": "test_optimal_1.00_1742592996_0@example.com",
+                      "password": "Test@1742592996#aj35"
+                    }
+                  },
+                  "response": {
+                    "status_code": 404,
+                    "headers": {
+                      "Server": "Werkzeug/2.2.3 Python/3.11.11",
+                      "Date": "Fri, 21 Mar 2025 21:36:36 GMT",
+                      "Content-Type": "application/problem+json",
+                      "Content-Length": "205",
+                      "Connection": "close"
+                    },
+                    "body": {
+                      "detail": "The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.",
+                      "status": 404,
+                      "title": "Not Found",
+                      "type": "about:blank"
+                    }
+                  }
+                },
+                {
+                  "request_number": 2,
+                  "username": "test_optimal_1.00_1742592996_1@example.com",
+                  "status_code": 404,
+                  "response_time": 0.014902114868164062,
+                  "response_size": 205,
+                  "request": {
+                    "method": "POST",
+                    "url": "http://localhost:5002/api/users",
+                    "headers": {
+                      "User-Agent": "python-requests/2.32.3",
+                      "Accept-Encoding": "gzip, deflate, zstd",
+                      "Accept": "*/*",
+                      "Connection": "keep-alive",
+                      "Content-Length": "149",
+                      "Content-Type": "application/json"
+                    },
+                    "body": {
+                      "username": "test_optimal_1.00_1742592996_1@example.com",
+                      "email": "test_optimal_1.00_1742592996_1@example.com",
+                      "password": "Test@1742592996#nmab"
+                    }
+                  },
+                  "response": {
+                    "status_code": 404,
+                    "headers": {
+                      "Server": "Werkzeug/2.2.3 Python/3.11.11",
+                      "Date": "Fri, 21 Mar 2025 21:36:37 GMT",
+                      "Content-Type": "application/problem+json",
+                      "Content-Length": "205",
+                      "Connection": "close"
+                    },
+                    "body": {
+                      "detail": "The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.",
+                      "status": 404,
+                      "title": "Not Found",
+                      "type": "about:blank"
+                    }
+                  }
+                }
+              ]
+            },
+            "example_request_response": {
+              "request_number": 1,
+              "username": "test_optimal_1.00_1742592996_0@example.com",
+              "status_code": 404,
+              "response_time": 0.015514135360717773,
+              "response_size": 205,
+              "request": {
+                "method": "POST",
+                "url": "http://localhost:5002/api/users",
+                "headers": {
+                  "User-Agent": "python-requests/2.32.3",
+                  "Accept-Encoding": "gzip, deflate, zstd",
+                  "Accept": "*/*",
+                  "Connection": "keep-alive",
+                  "Content-Length": "149",
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "username": "test_optimal_1.00_1742592996_0@example.com",
+                  "email": "test_optimal_1.00_1742592996_0@example.com",
+                  "password": "Test@1742592996#aj35"
+                }
+              },
+              "response": {
+                "status_code": 404,
+                "headers": {
+                  "Server": "Werkzeug/2.2.3 Python/3.11.11",
+                  "Date": "Fri, 21 Mar 2025 21:36:36 GMT",
+                  "Content-Type": "application/problem+json",
+                  "Content-Length": "205",
+                  "Connection": "close"
+                },
+                "body": {
+                  "detail": "The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                }
+              }
+            }
+          },
+          "remediation": "Consider implementing stricter rate limiting for account creation. The current rate allows for automated account creation, albeit at a reduced rate. Implement additional protections such as CAPTCHA, email verification, or IP-based rate limiting.",
+          "finding_id": "718e58d7"
+        },
+        {
+          "vulnerability": "Potential JWT Validation Issue",
+          "severity": "LOW",
+          "endpoint": "/api/users",
+          "details": "The application rejected the forged JWT token but did not return a specific JWT validation error. This might indicate that the token is being rejected for reasons other than proper JWT validation.",
+          "timestamp": 1742593098.2282019,
+          "evidence": {
+            "attack_type": "'none' algorithm",
+            "forged_token": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJhZG...",
+            "response": {
+              "status_code": 404,
+              "body": "{\n  \"detail\": \"The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.\",\n  \"status\": 404,\n  \"title\": \"Not Found\",\n  \"type\": \"about:blan..."
+            }
+          },
+          "remediation": "1. Root Cause Analysis:\nThe root cause of this vulnerability is likely due to the application not properly validating JWT tokens. The application is rejecting the forged JWT token, but it is not returning a specific JWT validation error. This could mean that the token is being rejected for reasons other than proper JWT validation, which could potentially allow an attacker to bypass the authentication process.\n\n2. Step-by-step Technical Instructions:\nTo fix this issue, you need to ensure that the application is properly validating JWT tokens and returning specific JWT validation errors. Here are the steps to do this:\n\nStep 1: Identify the code that is responsible for validating JWT tokens. This is typically located in the authentication or authorization middleware.\n\nStep 2: Ensure that the JWT token is being properly validated. This includes checking the token's signature, verifying the issuer and audience, and ensuring that the token has not expired.\n\nStep 3: If the token fails any of these checks, the application should return a specific JWT validation error. This error should indicate exactly why the token was rejected.\n\nStep 4: Test the application to ensure that it is properly validating JWT tokens and returning specific JWT validation errors.\n\n3. Code Examples:\nHere is an example of how to properly validate a JWT token in Node.js using the jsonwebtoken library:\n\n```javascript\nconst jwt = require('jsonwebtoken');\n\nfunction validateToken(req, res, next) {\n  const token = req.headers['authorization'];\n\n  jwt.verify(token, 'your-secret-key', function(err, decoded) {\n    if (err) {\n      // Return specific JWT validation error\n      return res.status(401).json({ error: 'Invalid token' });\n    }\n\n    // Token is valid, proceed to the next middleware\n    next();\n  });\n}\n```\n\n4. Best Practices:\nTo prevent similar issues in the future, always validate JWT tokens and return specific JWT validation errors. Also, consider using a library or framework that handles JWT validation for you. This can help to ensure that your application is following best practices for JWT validation.\n\n5. References:\nFor more information on JWT validation, see the following resources:\n\n- The official JWT website: https://jwt.io/\n- The OWASP guide to JWT security: https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_Cheat_Sheet_for_Java.html\n- The jsonwebtoken library for Node.js: https://www.npmjs.com/package/jsonwebtoken",
+          "finding_id": "559a36b5"
+        },
+        {
+          "vulnerability": "Potential JWT Validation Issue",
+          "severity": "LOW",
+          "endpoint": "/api/users",
+          "details": "The application rejected the forged JWT token but did not return a specific JWT validation error. This might indicate that the token is being rejected for reasons other than proper JWT validation.",
+          "timestamp": 1742593098.237113,
+          "evidence": {
+            "attack_type": "algorithm switching (RS256 to HS256)",
+            "forged_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZ...",
+            "response": {
+              "status_code": 404,
+              "body": "{\n  \"detail\": \"The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.\",\n  \"status\": 404,\n  \"title\": \"Not Found\",\n  \"type\": \"about:blan..."
+            }
+          },
+          "remediation": "1. Root Cause Analysis:\nThe root cause of this vulnerability is likely due to the application not properly validating JWT tokens. The application is rejecting the forged JWT token, but it is not returning a specific JWT validation error. This could mean that the token is being rejected for reasons other than proper JWT validation, which could potentially allow an attacker to bypass the authentication process.\n\n2. Step-by-step Technical Instructions:\nTo fix this issue, you need to ensure that the application is properly validating JWT tokens and returning specific JWT validation errors. Here are the steps to do this:\n\nStep 1: Identify the code that is responsible for validating JWT tokens. This is typically located in the authentication or authorization middleware.\n\nStep 2: Ensure that the JWT token is being properly validated. This includes checking the token's signature, verifying the issuer and audience, and ensuring that the token has not expired.\n\nStep 3: If the token fails any of these checks, the application should return a specific JWT validation error. This error should indicate exactly why the token was rejected.\n\nStep 4: Test the application to ensure that it is properly validating JWT tokens and returning specific JWT validation errors.\n\n3. Code Examples:\nHere is an example of how to properly validate a JWT token in Node.js using the jsonwebtoken library:\n\n```javascript\nconst jwt = require('jsonwebtoken');\n\nfunction validateToken(req, res, next) {\n  const token = req.headers['authorization'];\n\n  jwt.verify(token, 'your-secret-key', function(err, decoded) {\n    if (err) {\n      // Return specific JWT validation error\n      return res.status(401).json({ error: 'Invalid token' });\n    }\n\n    // Token is valid, proceed to the next middleware\n    next();\n  });\n}\n```\n\n4. Best Practices:\nTo prevent similar issues in the future, always validate JWT tokens and return specific JWT validation errors. Also, consider using a library or framework that handles JWT validation for you. This can help to ensure that your application is following best practices for JWT validation.\n\n5. References:\nFor more information on JWT validation, see the following resources:\n\n- The official JWT website: https://jwt.io/\n- The OWASP guide to JWT security: https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_Cheat_Sheet_for_Java.html\n- The jsonwebtoken library for Node.js: https://www.npmjs.com/package/jsonwebtoken",
+          "finding_id": "c36cad71"
+        },
+        {
+          "vulnerability": "Potential JWT Validation Issue",
+          "severity": "LOW",
+          "endpoint": "/api/users",
+          "details": "The application rejected the forged JWT token but did not return a specific JWT validation error. This might indicate that the token is being rejected for reasons other than proper JWT validation.",
+          "timestamp": 1742593098.244716,
+          "evidence": {
+            "attack_type": "modified payload (added admin role)",
+            "forged_token": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJhZG...",
+            "response": {
+              "status_code": 404,
+              "body": "{\n  \"detail\": \"The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.\",\n  \"status\": 404,\n  \"title\": \"Not Found\",\n  \"type\": \"about:blan..."
+            }
+          },
+          "remediation": "1. Root Cause Analysis:\nThe root cause of this vulnerability is likely due to the application not properly validating JWT tokens. The application is rejecting the forged JWT token, but it is not returning a specific JWT validation error. This could mean that the token is being rejected for reasons other than proper JWT validation, which could potentially allow an attacker to bypass the authentication process.\n\n2. Step-by-step Technical Instructions:\nTo fix this issue, you need to ensure that the application is properly validating JWT tokens and returning specific JWT validation errors. Here are the steps to do this:\n\nStep 1: Identify the code that is responsible for validating JWT tokens. This is typically located in the authentication or authorization middleware.\n\nStep 2: Ensure that the JWT token is being properly validated. This includes checking the token's signature, verifying the issuer and audience, and ensuring that the token has not expired.\n\nStep 3: If the token fails any of these checks, the application should return a specific JWT validation error. This error should indicate exactly why the token was rejected.\n\nStep 4: Test the application to ensure that it is properly validating JWT tokens and returning specific JWT validation errors.\n\n3. Code Examples:\nHere is an example of how to properly validate a JWT token in Node.js using the jsonwebtoken library:\n\n```javascript\nconst jwt = require('jsonwebtoken');\n\nfunction validateToken(req, res, next) {\n  const token = req.headers['authorization'];\n\n  jwt.verify(token, 'your-secret-key', function(err, decoded) {\n    if (err) {\n      // Return specific JWT validation error\n      return res.status(401).json({ error: 'Invalid token' });\n    }\n\n    // Token is valid, proceed to the next middleware\n    next();\n  });\n}\n```\n\n4. Best Practices:\nTo prevent similar issues in the future, always validate JWT tokens and return specific JWT validation errors. Also, consider using a library or framework that handles JWT validation for you. This can help to ensure that your application is following best practices for JWT validation.\n\n5. References:\nFor more information on JWT validation, see the following resources:\n\n- The official JWT website: https://jwt.io/\n- The OWASP guide to JWT security: https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_Cheat_Sheet_for_Java.html\n- The jsonwebtoken library for Node.js: https://www.npmjs.com/package/jsonwebtoken",
+          "finding_id": "8fb8037a"
+        },
+        {
+          "vulnerability": "Potential JWT Validation Issue",
+          "severity": "LOW",
+          "endpoint": "/api/users",
+          "details": "The application rejected the forged JWT token but did not return a specific JWT validation error. This might indicate that the token is being rejected for reasons other than proper JWT validation.",
+          "timestamp": 1742593098.254549,
+          "evidence": {
+            "attack_type": "completely forged token",
+            "forged_token": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJhZG...",
+            "response": {
+              "status_code": 404,
+              "body": "{\n  \"detail\": \"The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.\",\n  \"status\": 404,\n  \"title\": \"Not Found\",\n  \"type\": \"about:blan..."
+            }
+          },
+          "remediation": "1. Root Cause Analysis:\nThe root cause of this vulnerability is likely due to the application not properly validating JWT tokens. The application is rejecting the forged JWT token, but it is not returning a specific JWT validation error. This could mean that the token is being rejected for reasons other than proper JWT validation, which could potentially allow an attacker to bypass the authentication process.\n\n2. Step-by-step Technical Instructions:\nTo fix this issue, you need to ensure that the application is properly validating JWT tokens and returning specific JWT validation errors. Here are the steps to do this:\n\nStep 1: Identify the code that is responsible for validating JWT tokens. This is typically located in the authentication or authorization middleware.\n\nStep 2: Ensure that the JWT token is being properly validated. This includes checking the token's signature, verifying the issuer and audience, and ensuring that the token has not expired.\n\nStep 3: If the token fails any of these checks, the application should return a specific JWT validation error. This error should indicate exactly why the token was rejected.\n\nStep 4: Test the application to ensure that it is properly validating JWT tokens and returning specific JWT validation errors.\n\n3. Code Examples:\nHere is an example of how to properly validate a JWT token in Node.js using the jsonwebtoken library:\n\n```javascript\nconst jwt = require('jsonwebtoken');\n\nfunction validateToken(req, res, next) {\n  const token = req.headers['authorization'];\n\n  jwt.verify(token, 'your-secret-key', function(err, decoded) {\n    if (err) {\n      // Return specific JWT validation error\n      return res.status(401).json({ error: 'Invalid token' });\n    }\n\n    // Token is valid, proceed to the next middleware\n    next();\n  });\n}\n```\n\n4. Best Practices:\nTo prevent similar issues in the future, always validate JWT tokens and return specific JWT validation errors. Also, consider using a library or framework that handles JWT validation for you. This can help to ensure that your application is following best practices for JWT validation.\n\n5. References:\nFor more information on JWT validation, see the following resources:\n\n- The official JWT website: https://jwt.io/\n- The OWASP guide to JWT security: https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_Cheat_Sheet_for_Java.html\n- The jsonwebtoken library for Node.js: https://www.npmjs.com/package/jsonwebtoken",
+          "finding_id": "787d46b8"
+        }
+      ],
+      "start_time": "2025-03-21T16:36:22.436218",
+      "end_time": "2025-03-21T16:38:18.263297"
+    },
+    {
+      "name": "jwt_vulnerabilities",
+      "success": true,
+      "duration": 0.0008339881896972656,
+      "findings": [
+        {
+          "vulnerability": "JWT 'none' Algorithm Vulnerability",
+          "severity": "CRITICAL",
+          "endpoint": "/",
+          "details": "The API accepts JWT tokens with the 'none' algorithm, allowing authentication bypass.",
+          "timestamp": 1742593098.263981,
+          "evidence": {
+            "original_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTkzMDk4LCJleHAiOjE3NDI2Nzk0OTh9.DXH1ZM6fCnAErSYWIgghxY33EIBgkHPOr4rZzBdUs1g",
+            "tampered_token": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTkzMDk4LCJleHAiOjE3NDI2Nzk0OTh9.",
+            "decoded_payload": {
+              "sub": "1234567890",
+              "name": "Test User",
+              "role": "user",
+              "iat": 1742593098,
+              "exp": 1742679498
+            },
+            "request": {
+              "method": "GET",
+              "url": "http://localhost:5002/",
+              "headers": {
+                "Authorization": "Bearer eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTkzMDk4LCJleHAiOjE3NDI2Nzk0OTh9.",
+                "Content-Type": "application/json"
+              }
+            },
+            "response": {
+              "status_code": 200,
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "user": {
+                  "id": 1,
+                  "email": "test@example.com",
+                  "role": "admin"
+                }
+              }
+            }
+          },
+          "remediation": "1. Root Cause Analysis:\nThe root cause of this vulnerability is that the API is accepting JWT tokens with the 'none' algorithm. This is a known vulnerability in JWT libraries, where the 'none' algorithm is used, it can allow an attacker to create their own \"signed\" tokens with whatever payload they want, leading to authentication bypass.\n\n2. Step-by-step technical instructions for fixing the issue:\n   - Step 1: Identify the JWT library used in your API. This is typically found in the code where JWT tokens are being validated.\n   - Step 2: Update the JWT validation code to disallow the 'none' algorithm. This is typically done by specifying the algorithms that should be allowed when validating the JWT token.\n   - Step 3: Test the updated code to ensure that JWT tokens with the 'none' algorithm are no longer accepted.\n   - Step 4: Deploy the updated code to your API.\n\n3. Code Examples:\nAssuming you are using the Node.js JWT library, you can specify the algorithms that should be allowed when validating the JWT token as follows:\n\n```javascript\nvar jwt = require('jsonwebtoken');\nvar token = req.headers.authorization;\njwt.verify(token, secret, { algorithms: ['HS256', 'RS256'] }, function(err, decoded) {\n  if (err) {\n    // handle error\n  } else {\n    // proceed with authentication\n  }\n});\n```\n\nIn this example, only the 'HS256' and 'RS256' algorithms are allowed.\n\n4. Best Practices:\nTo prevent similar issues in the future, always specify the algorithms that should be allowed when validating JWT tokens. Do not rely on the default settings of your JWT library, as they may allow insecure algorithms. Regularly update your JWT library to benefit from security fixes and improvements.\n\n5. References to relevant security standards or guidelines:\nThe OWASP (Open Web Application Security Project) provides guidelines on how to securely use JWT. Specifically, the 'none' algorithm vulnerability is mentioned in the 'Token Verification' section: https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_Cheat_Sheet_for_Java.html.",
+          "finding_id": "8b3e81b0"
+        },
+        {
+          "vulnerability": "JWT Weak Signing Key",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/login",
+          "details": "The API uses a weak signing key ('secret') for JWT tokens, allowing token forgery.",
+          "timestamp": 1742593098.264012,
+          "evidence": {
+            "weak_key": "secret",
+            "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTkzMDk4LCJleHAiOjE3NDI2Nzk0OTh9.DXH1ZM6fCnAErSYWIgghxY33EIBgkHPOr4rZzBdUs1g",
+            "request": {
+              "method": "POST",
+              "url": "http://localhost:5002/users/v1/login",
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "json_data": {
+                "email": "test@example.com",
+                "password": "Test123!@#"
+              }
+            },
+            "response": {
+              "status_code": 200,
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTkzMDk4LCJleHAiOjE3NDI2Nzk0OTh9.DXH1ZM6fCnAErSYWIgghxY33EIBgkHPOr4rZzBdUs1g",
+                "user": {
+                  "id": 1,
+                  "email": "test@example.com"
+                }
+              }
+            }
+          },
+          "remediation": "1. Root Cause Analysis:\nThe root cause of this vulnerability is the use of a weak signing key for JWT tokens. A weak signing key can be easily guessed or brute-forced, allowing an attacker to forge tokens and impersonate any user, thereby gaining unauthorized access to the system.\n\n2. Step-by-step Technical Instructions for Fixing the Issue:\n   - Step 1: Generate a new, strong signing key. The key should be long and complex enough to resist brute-force attacks. As a rule of thumb, it should be at least 256 bits long.\n   - Step 2: Replace the weak signing key in the API with the new, strong key. This should be done in a secure manner, ensuring that the new key is not exposed in transit or at rest.\n   - Step 3: Update the JWT signing process to use the new key. This will likely involve updating the configuration of the JWT library or middleware used by the API.\n   - Step 4: Test the API to ensure that it correctly signs and verifies JWT tokens with the new key. This should include both positive tests (with valid tokens) and negative tests (with forged or tampered tokens).\n   - Step 5: Monitor the API for any signs of unauthorized access or token forgery.\n\n3. Code Examples:\nHere is an example of how to generate a new signing key and use it to sign JWT tokens in Node.js with the jsonwebtoken library:\n\n```javascript\nconst crypto = require('crypto');\nconst jwt = require('jsonwebtoken');\n\n// Generate a new, strong signing key\nconst newKey = crypto.randomBytes(32).toString('hex');\n\n// Use the new key to sign JWT tokens\nconst token = jwt.sign({ data: 'payload' }, newKey, { algorithm: 'HS256' });\n```\n\n4. Best Practices:\n   - Regularly rotate signing keys: This limits the impact if a key is compromised.\n   - Use strong, cryptographically secure random keys: This makes it harder for an attacker to guess or brute-force the key.\n   - Protect keys in transit and at rest: This prevents an attacker from intercepting the key.\n   - Monitor for signs of token forgery or unauthorized access: This allows you to detect and respond to attacks quickly.\n\n5. References to Relevant Security Standards or Guidelines:\n   - OWASP API Security Top 10: This is a list of the most critical security risks to APIs, including weak encryption and key management.\n   - NIST Special Publication 800-63B: This provides guidelines for authentication and lifecycle management, including key management.\n   - RFC 7518: This defines cryptographic algorithms for use with JWT, including recommendations for key length and complexity.",
+          "finding_id": "efd573e7"
+        },
+        {
+          "vulnerability": "Missing JWT Signature Validation",
+          "severity": "CRITICAL",
+          "endpoint": "/",
+          "details": "The API does not properly validate JWT signatures, allowing attackers to modify token content without detection.",
+          "timestamp": 1742593098.264043,
+          "evidence": {
+            "original_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTkzMDk4LCJleHAiOjE3NDI2Nzk0OTh9.DXH1ZM6fCnAErSYWIgghxY33EIBgkHPOr4rZzBdUs1g",
+            "tampered_token": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTkzMDk4LCJleHAiOjE3NDI2Nzk0OTh9.",
+            "decoded_payload": {
+              "sub": "1234567890",
+              "name": "Test User",
+              "role": "user",
+              "iat": 1742593098,
+              "exp": 1742679498
+            },
+            "request": {
+              "method": "GET",
+              "url": "http://localhost:5002/",
+              "headers": {
+                "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTkzMDk4LCJleHAiOjE3NDI2Nzk0OTh9.DXH1ZM6fCnAErSYWIgghxY33EIBgkHPOr4rZzBdUs1g",
+                "Content-Type": "application/json"
+              }
+            },
+            "response": {
+              "status_code": 200,
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "user": {
+                  "id": 1,
+                  "email": "test@example.com",
+                  "role": "user"
+                }
+              }
+            }
+          },
+          "remediation": "1. Root Cause Analysis:\nThe root cause of this vulnerability is the lack of proper JWT signature validation in the API. JWT (JSON Web Token) is a compact, URL-safe means of representing claims to be transferred between two parties. The claims in a JWT are encoded as a JSON object that is used as the payload of a JSON Web Signature (JWS) structure. Without proper signature validation, an attacker can modify the token content without detection, leading to potential unauthorized access or data manipulation.\n\n2. Step-by-step Technical Instructions for Fixing the Issue:\n\nStep 1: Identify the JWT validation function in your code. This is where the JWT signature should be checked.\n\nStep 2: Implement JWT signature validation. This can be done using a JWT library for your specific programming language. The library should provide a function to validate the JWT signature.\n\nStep 3: After implementing the validation, ensure that the API rejects any JWT with an invalid signature.\n\nStep 4: Test the implementation to ensure that it correctly validates JWT signatures. This can be done by creating a JWT with an invalid signature and trying to use it with the API.\n\n3. Code Examples:\n\nHere is an example of how to validate a JWT signature in Node.js using the jsonwebtoken library:\n\n```javascript\nconst jwt = require('jsonwebtoken');\nconst secret = 'your-256-bit-secret';\n\n// your JWT\nconst token = 'your-jwt-token';\n\ntry {\n  jwt.verify(token, secret);\n  console.log('JWT is valid');\n} catch(err) {\n  console.log('JWT is invalid');\n}\n```\n\n4. Best Practices to Prevent Similar Issues in the Future:\n\n- Always validate JWT signatures to ensure the integrity of the token.\n- Use a strong, unique secret for signing your JWTs.\n- Regularly update and rotate your secrets.\n- Use a well-maintained JWT library that handles the complexities of JWT validation for you.\n- Regularly perform security audits of your API to identify and fix vulnerabilities.\n\n5. References to Relevant Security Standards or Guidelines:\n\n- OWASP (Open Web Application Security Project) provides a comprehensive guide on JWT security: https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_Cheat_Sheet_for_Java.html\n- The IETF (Internet Engineering Task Force) has a standard for JWT: https://tools.ietf.org/html/rfc7519\n- The NIST (National Institute of Standards and Technology) provides guidelines on using cryptography: https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-175B.pdf",
+          "finding_id": "f7bca7dc"
+        },
+        {
+          "vulnerability": "JWT Expiration Manipulation",
+          "severity": "CRITICAL",
+          "endpoint": "/",
+          "details": "The API does not properly validate the integrity of JWT tokens, allowing attackers to modify the expiration time.",
+          "timestamp": 1742593098.2640839,
+          "evidence": {
+            "original_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTkzMDk4LCJleHAiOjE3NDI2Nzk0OTh9.DXH1ZM6fCnAErSYWIgghxY33EIBgkHPOr4rZzBdUs1g",
+            "tampered_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTkzMDk4LCJleHAiOjE3NzQxMjkwOTh9.FQ5AzYphmpOPyAvlvRAg-HG6CXJoBgv6yDNMggjnGdo",
+            "request": {
+              "method": "GET",
+              "url": "http://localhost:5002/",
+              "headers": {
+                "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTkzMDk4LCJleHAiOjE3NDI2Nzk0OTh9.DXH1ZM6fCnAErSYWIgghxY33EIBgkHPOr4rZzBdUs1g",
+                "Content-Type": "application/json"
+              }
+            },
+            "response": {
+              "status_code": 200,
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "user": {
+                  "id": 1,
+                  "email": "test@example.com",
+                  "role": "user"
+                }
+              }
+            }
+          },
+          "remediation": "1. Root Cause Analysis:\nThe root cause of this vulnerability is the lack of proper validation of the JWT token's integrity. This allows an attacker to manipulate the expiration time of the token, potentially gaining unauthorized access or extending their access beyond the intended period.\n\n2. Step-by-step Technical Instructions:\nGiven the lack of specific API structural details, the following general steps should be taken to remediate this vulnerability:\n\n   a. Implement JWT Signature Verification: Ensure that the API verifies the signature of the JWT token. This will ensure that the token has not been tampered with.\n\n   b. Validate Expiration: The API should validate the 'exp' claim of the JWT token to ensure that the token has not expired.\n\n   c. Use a library: Use a well-maintained library to handle JWT creation and validation. This can help avoid common pitfalls and vulnerabilities.\n\n3. Code Examples:\nHere is a simple example using the Node.js library 'jsonwebtoken':\n\n```javascript\nconst jwt = require('jsonwebtoken');\n\n// Verify JWT token\nlet token = 'your JWT token';\nlet secret = 'your secret key';\n\njwt.verify(token, secret, function(err, decoded) {\n  if (err) {\n    // Token is not valid\n    console.log(err.message);\n  } else {\n    // Token is valid\n    console.log(decoded);\n  }\n});\n```\n\n4. Best Practices:\nTo prevent similar issues in the future, follow these best practices:\n\n   a. Always validate JWT tokens: Always verify the signature and validate all claims of the JWT token.\n\n   b. Use HTTPS: Always use HTTPS to prevent the interception of tokens.\n\n   c. Short token lifespan: Keep the lifespan of your tokens short to limit the potential damage of a token leak.\n\n   d. Use well-maintained libraries: Use libraries that are well-maintained and widely used for JWT handling.\n\n5. References:\nFor more information on JWT security, refer to the following resources:\n\n   a. JWT.io Introduction to JSON Web Tokens: https://jwt.io/introduction/\n\n   b. OWASP JSON Web Token (JWT) Cheat Sheet for Java: https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_for_Java_Cheat_Sheet.html\n\n   c. RFC 7519, JSON Web Token (JWT): https://tools.ietf.org/html/rfc7519",
+          "finding_id": "d3b4eee3"
+        },
+        {
+          "vulnerability": "JWT Token Tampering - None algorithm",
+          "severity": "CRITICAL",
+          "endpoint": "/",
+          "details": "The API does not properly validate the integrity of JWT tokens, allowing attackers to modify the payload using None algorithm to gain elevated privileges.",
+          "timestamp": 1742593098.264124,
+          "evidence": {
+            "original_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTkzMDk4LCJleHAiOjE3NDI2Nzk0OTh9.DXH1ZM6fCnAErSYWIgghxY33EIBgkHPOr4rZzBdUs1g",
+            "tampered_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc0MjU5MzA5OCwiZXhwIjoxNzQyNjc5NDk4fQ.D5SE1MLsX6tfdMJUoOguU8Vo5pEhN4c4ZF_sD_HcBPI",
+            "decoded_payload": {
+              "sub": "1234567890",
+              "name": "Test User",
+              "role": "admin",
+              "iat": 1742593098,
+              "exp": 1742596698
+            },
+            "request": {
+              "method": "GET",
+              "url": "http://localhost:5002/",
+              "headers": {
+                "Authorization": "Bearer eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTkzMDk4LCJleHAiOjE3NDI2Nzk0OTh9.",
+                "Content-Type": "application/json"
+              }
+            },
+            "response": {
+              "status_code": 200,
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "user": {
+                  "id": 1,
+                  "email": "test@example.com",
+                  "role": "admin"
+                }
+              }
+            }
+          },
+          "remediation": "1. Root Cause Analysis:\nThe root cause of this vulnerability is the improper validation of JWT tokens by the API. The API is not checking the algorithm used in the token's header, allowing an attacker to change the algorithm to 'None'. This means the token's signature is not verified, allowing the payload to be modified and potentially elevating the attacker's privileges.\n\n2. Step-by-step technical instructions for fixing the issue:\n   - Step 1: Update the JWT token validation process to check the algorithm used. The API should reject tokens that use the 'None' algorithm.\n   - Step 2: Implement a whitelist of accepted algorithms. This will ensure that only secure, known algorithms are used.\n   - Step 3: Ensure that the API verifies the signature of each JWT token. This will prevent attackers from modifying the payload.\n   - Step 4: Test the updated API to ensure that it correctly rejects JWT tokens with the 'None' algorithm and tokens with an invalid signature.\n\n3. Code Examples:\nIn a Node.js application using the jsonwebtoken library, you can enforce the use of a specific algorithm like so:\n\n```javascript\nconst jwt = require('jsonwebtoken');\nconst token = req.headers.authorization;\nconst secret = 'your-secret-key';\n\njwt.verify(token, secret, { algorithms: ['HS256'] }, function(err, payload) {\n  if(err) {\n    // handle error\n  } else {\n    // process the payload\n  }\n});\n```\nIn this example, only tokens signed with the HS256 algorithm will be accepted.\n\n4. Best Practices:\n   - Always validate the JWT token's signature and algorithm.\n   - Use a whitelist of accepted algorithms.\n   - Regularly update your JWT library or framework to benefit from security patches.\n   - Consider using a library or framework that provides secure defaults.\n   - Implement proper error handling to prevent information leakage.\n\n5. References:\n   - The OWASP (Open Web Application Security Project) provides a comprehensive guide on JWT security: https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_Cheat_Sheet_for_Java.html\n   - The IETF (Internet Engineering Task Force) provides the JWT standard: https://tools.ietf.org/html/rfc7519\n   - The NIST (National Institute of Standards and Technology) provides guidelines on using cryptography: https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-175B.pdf",
+          "finding_id": "cfdd00b5"
+        }
+      ],
+      "start_time": "2025-03-21T16:38:18.263417",
+      "end_time": "2025-03-21T16:38:18.264251"
+    },
+    {
+      "name": "regex_dos",
+      "success": true,
+      "duration": 0,
+      "findings": [
+        {
+          "vulnerability": "RegexDOS Scanner Skipped",
+          "severity": "INFO",
+          "endpoint": "N/A",
+          "details": "The RegexDOS scanner was skipped due to the --dos flag being set to false.",
+          "remediation": "1. Root Cause Analysis:\nThe root cause of this vulnerability is that the RegexDOS scanner was skipped due to the --dos flag being set to false. This means that the API is not being scanned for potential Denial of Service (DoS) vulnerabilities that could be exploited through regular expressions, which could lead to service disruption or other security issues.\n\n2. Step-by-step Technical Instructions:\nTo fix this issue, you need to enable the RegexDOS scanner by setting the --dos flag to true. Here are the steps to do this:\n\n   a. Identify the command or script that is running the API scanner. This could be a shell script, a Python script, or some other type of executable file.\n   \n   b. Open this file in a text editor.\n   \n   c. Find the line where the API scanner is invoked. This line should include the --dos flag.\n   \n   d. Change the --dos flag from false to true. This will enable the RegexDOS scanner.\n   \n   e. Save and close the file.\n   \n   f. Run the API scanner again to ensure that the RegexDOS scanner is now being executed.\n\n3. Code Examples:\nIf the API scanner is being invoked in a shell script, the line might look something like this:\n\n```bash\n./api_scanner --dos=false\n```\n\nYou would change this line to:\n\n```bash\n./api_scanner --dos=true\n```\n\n4. Best Practices:\nTo prevent similar issues in the future, consider the following best practices:\n\n   a. Regularly review your API scanner settings to ensure that all necessary scanners are enabled.\n   \n   b. Implement a policy that requires all changes to API scanner settings to be reviewed and approved by a security expert.\n   \n   c. Regularly update your API scanner to ensure that it can detect the latest vulnerabilities.\n   \n   d. Consider automating the process of running the API scanner to ensure that it is run regularly and consistently.\n\n5. References to Relevant Security Standards or Guidelines:\nFor more information on API security and best practices, refer to the OWASP API Security Project (https://owasp.org/www-project-api-security/). This project provides a wealth of information on API security, including a top 10 list of API security risks and how to mitigate them."
+        }
+      ],
+      "start_time": "2025-03-21T16:38:18.264294",
+      "end_time": "2025-03-21T16:38:18.264295"
+    }
+  ],
+  "metadata": {
+    "config_file": "/Users/rvance/Documents/scannerapi/configs/vampi_hotel.yaml",
+    "swagger_file": null,
+    "openapi": {
+      "spec_path": null,
+      "endpoint_count": 14,
+      "source": "openapi"
+    }
+  },
+  "summary": {
+    "total_scanners": 8,
+    "successful_scanners": 8,
+    "failed_scanners": 0,
+    "total_findings": 15
+  }
+}

@@ -1,0 +1,359 @@
+{{!-- Integrated Scan Flow Interface --}}
+<div class="container mt-4">
+  <h1 class="mb-4">Integrated Security Scan</h1>
+  
+  <div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+      <h5 class="mb-0">Start a New Scan</h5>
+    </div>
+    <div class="card-body">
+      <form id="integrated-scan-form">
+        <div class="row mb-3">
+          <div class="col-md-6">
+            <label for="configSelect" class="form-label">Configuration File</label>
+            <select class="form-select" id="configSelect" name="configPath" required>
+              <option value="" selected disabled>Select a configuration file</option>
+              {{#each configs}}
+                <option value="{{this.path}}">{{this.name}}</option>
+              {{/each}}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label for="targetUrl" class="form-label">Target URL</label>
+            <input type="url" class="form-control" id="targetUrl" name="targetUrl" placeholder="https://api.example.com" required>
+          </div>
+        </div>
+        
+        <div class="row mb-3">
+          <div class="col-md-4">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="allowDos" name="allowDos">
+              <label class="form-check-label" for="allowDos">Allow DoS Testing</label>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <label for="sqlInjection" class="form-label">SQL Injection Testing</label>
+            <select class="form-select" id="sqlInjection" name="sqlInjection">
+              <option value="smart" selected>Smart (Default)</option>
+              <option value="light">Light</option>
+              <option value="medium">Medium</option>
+              <option value="heavy">Heavy</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label for="llmProvider" class="form-label">LLM Provider</label>
+            <select class="form-select" id="llmProvider" name="llmProvider">
+              <option value="openai" selected>OpenAI</option>
+              <option value="ollama">Ollama</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="row mb-3" id="modelSelectRow">
+          <div class="col-md-6">
+            <label for="llmModel" class="form-label">LLM Model</label>
+            <select class="form-select" id="llmModel" name="llmModel">
+              <option value="gpt-4o" selected>GPT-4o (OpenAI)</option>
+              <option value="gpt-3.5-turbo">GPT-3.5 Turbo (OpenAI)</option>
+              <option value="llama3.3">Llama 3.3 (Ollama)</option>
+              <option value="llama3">Llama 3 (Ollama)</option>
+            </select>
+          </div>
+        </div>
+        
+        <button type="submit" class="btn btn-primary" id="startScanBtn">
+          <i class="fas fa-play-circle"></i> Start Integrated Scan
+        </button>
+      </form>
+    </div>
+  </div>
+  
+  <div class="card mb-4" id="scanProgressCard" style="display: none;">
+    <div class="card-header bg-info text-white">
+      <h5 class="mb-0">Scan Progress</h5>
+    </div>
+    <div class="card-body">
+      <div class="progress mb-3">
+        <div class="progress-bar progress-bar-striped progress-bar-animated" id="scanProgressBar" role="progressbar" style="width: 0%"></div>
+      </div>
+      
+      <div class="row mb-3">
+        <div class="col-md-6">
+          <p><strong>Status:</strong> <span id="scanStatus">Initializing...</span></p>
+          <p><strong>Scan ID:</strong> <span id="scanId">-</span></p>
+        </div>
+        <div class="col-md-6">
+          <p><strong>Stage:</strong> <span id="scanStage">Preparing</span></p>
+          <p><strong>Time Elapsed:</strong> <span id="timeElapsed">00:00:00</span></p>
+        </div>
+      </div>
+      
+      <div class="d-flex justify-content-between">
+        <button class="btn btn-danger" id="stopScanBtn">
+          <i class="fas fa-stop-circle"></i> Stop Scan
+        </button>
+        <a href="#" class="btn btn-success" id="viewReportBtn" style="display: none;">
+          <i class="fas fa-file-alt"></i> View Report
+        </a>
+      </div>
+    </div>
+  </div>
+  
+  <div class="card">
+    <div class="card-header bg-secondary text-white">
+      <h5 class="mb-0">Scan Output</h5>
+    </div>
+    <div class="card-body p-0">
+      <pre id="scanOutput" class="bg-dark text-light p-3 mb-0" style="height: 400px; overflow-y: auto;"></pre>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // Socket connection
+    const socket = io();
+    let sessionId = null;
+    let startTime = null;
+    let timerInterval = null;
+    
+    // Update LLM model options based on provider selection
+    document.getElementById('llmProvider').addEventListener('change', function() {
+      const provider = this.value;
+      const modelSelect = document.getElementById('llmModel');
+      
+      // Clear existing options
+      modelSelect.innerHTML = '';
+      
+      if (provider === 'openai') {
+        // Add OpenAI models
+        const openaiModels = [
+          { value: 'gpt-4o', text: 'GPT-4o (OpenAI)' },
+          { value: 'gpt-3.5-turbo', text: 'GPT-3.5 Turbo (OpenAI)' }
+        ];
+        
+        openaiModels.forEach(model => {
+          const option = document.createElement('option');
+          option.value = model.value;
+          option.textContent = model.text;
+          modelSelect.appendChild(option);
+        });
+      } else if (provider === 'ollama') {
+        // Add Ollama models
+        const ollamaModels = [
+          { value: 'llama3.3', text: 'Llama 3.3 (Ollama)' },
+          { value: 'llama3', text: 'Llama 3 (Ollama)' }
+        ];
+        
+        ollamaModels.forEach(model => {
+          const option = document.createElement('option');
+          option.value = model.value;
+          option.textContent = model.text;
+          modelSelect.appendChild(option);
+        });
+      }
+    });
+    
+    // Form submission
+    document.getElementById('integrated-scan-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+      
+      const formData = new FormData(this);
+      const payload = {
+        configPath: formData.get('configPath'),
+        targetUrl: formData.get('targetUrl'),
+        allowDos: formData.get('allowDos') === 'on',
+        sqlInjection: formData.get('sqlInjection'),
+        llmProvider: formData.get('llmProvider'),
+        llmModel: formData.get('llmModel')
+      };
+      
+      // Disable form
+      document.getElementById('startScanBtn').disabled = true;
+      
+      // Show progress card
+      document.getElementById('scanProgressCard').style.display = 'block';
+      document.getElementById('scanOutput').textContent = '';
+      
+      // Start timer
+      startTime = new Date();
+      timerInterval = setInterval(updateTimer, 1000);
+      
+      // Send request to start scan
+      fetch('/integrated-scan/start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          sessionId = data.sessionId;
+          
+          // Join socket room for this session
+          socket.emit('join', sessionId);
+          
+          // Update UI
+          document.getElementById('scanStatus').textContent = 'Initializing...';
+          document.getElementById('scanStage').textContent = 'Preparing';
+          document.getElementById('scanProgressBar').style.width = '10%';
+          
+          // Enable stop button
+          document.getElementById('stopScanBtn').disabled = false;
+        } else {
+          showError(data.error || 'Failed to start scan');
+        }
+      })
+      .catch(error => {
+        showError('Error starting scan: ' + error.message);
+      });
+    });
+    
+    // Stop scan button
+    document.getElementById('stopScanBtn').addEventListener('click', function() {
+      if (!sessionId) {
+        showError('No active scan to stop');
+        return;
+      }
+      
+      // Disable the button to prevent multiple clicks
+      this.disabled = true;
+      this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Stopping...';
+      
+      // Show stopping message in UI with clear visual feedback
+      document.getElementById('scanStatus').textContent = 'Stopping...';
+      document.getElementById('scanOutput').textContent += '\n\n==== STOP REQUEST INITIATED AT ' + new Date().toLocaleTimeString() + ' ====\n';
+      document.getElementById('scanOutput').textContent += '[INFO] Attempting to stop the scan. This may take a few seconds...\n';
+      
+      // Add visual indicator to progress bar
+      document.getElementById('scanProgressBar').classList.add('bg-warning');
+      
+      // Scroll to bottom of output
+      const outputElement = document.getElementById('scanOutput');
+      outputElement.scrollTop = outputElement.scrollHeight;
+      
+      fetch(`/integrated-scan/stop/${sessionId}`, {
+        method: 'POST'
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          // Update UI to show stopped state
+          document.getElementById('scanStatus').textContent = 'Stopped by user';
+          document.getElementById('scanStage').textContent = 'Cancelled';
+          document.getElementById('scanProgressBar').style.width = '100%';
+          document.getElementById('scanProgressBar').classList.remove('bg-info', 'progress-bar-animated');
+          document.getElementById('scanProgressBar').classList.add('bg-warning');
+          
+          // Clear timer
+          clearInterval(timerInterval);
+          
+          // Re-enable form
+          document.getElementById('startScanBtn').disabled = false;
+          
+          // Show message in output
+          document.getElementById('scanOutput').textContent += '\n[SUCCESS] Scan stopped successfully\n';
+          
+          // Reset stop button
+          this.innerHTML = '<i class="fas fa-stop-circle"></i> Stop Scan';
+          this.disabled = true; // Keep disabled since scan is already stopped
+        } else {
+          // Show error
+          showError(data.error || 'Failed to stop scan');
+          
+          // Reset button
+          this.innerHTML = '<i class="fas fa-stop-circle"></i> Stop Scan';
+          this.disabled = false;
+        }
+      })
+      .catch(error => {
+        showError('Error stopping scan: ' + error.message);
+        
+        // Reset button
+        this.innerHTML = '<i class="fas fa-stop-circle"></i> Stop Scan';
+        this.disabled = false;
+      });
+    });
+    
+    // View report button
+    document.getElementById('viewReportBtn').addEventListener('click', function(e) {
+      if (!this.href || this.href === '#') {
+        e.preventDefault();
+        showError('Report URL not available yet');
+      }
+    });
+    
+    // Socket event handlers
+    socket.on('scanner-output', function(data) {
+      const outputElement = document.getElementById('scanOutput');
+      outputElement.textContent += data.data;
+      outputElement.scrollTop = outputElement.scrollHeight;
+    });
+    
+    socket.on('scanner-status', function(data) {
+      console.log('Scanner status update:', data);
+      
+      // Update status
+      document.getElementById('scanStatus').textContent = data.success ? 'Running' : 'Error';
+      
+      // Update scan ID if available
+      if (data.scanId) {
+        document.getElementById('scanId').textContent = data.scanId;
+      }
+      
+      // Update progress based on stage
+      switch (data.type) {
+        case 'scan-complete':
+          document.getElementById('scanStage').textContent = 'Scan Complete, Enhancing Results...';
+          document.getElementById('scanProgressBar').style.width = '40%';
+          break;
+          
+        case 'flow-complete':
+          document.getElementById('scanStage').textContent = 'Complete';
+          document.getElementById('scanStatus').textContent = 'Finished';
+          document.getElementById('scanProgressBar').style.width = '100%';
+          clearInterval(timerInterval);
+          
+          // Enable report button
+          const viewReportBtn = document.getElementById('viewReportBtn');
+          viewReportBtn.style.display = 'inline-block';
+          viewReportBtn.href = data.reportUrl;
+          break;
+          
+        case 'flow-error':
+          document.getElementById('scanStage').textContent = 'Error';
+          document.getElementById('scanStatus').textContent = 'Failed';
+          document.getElementById('scanProgressBar').style.width = '100%';
+          document.getElementById('scanProgressBar').classList.remove('bg-info');
+          document.getElementById('scanProgressBar').classList.add('bg-danger');
+          clearInterval(timerInterval);
+          
+          // Show error message
+          showError(data.error || 'An error occurred during the scan');
+          break;
+      }
+    });
+    
+    // Helper functions
+    function updateTimer() {
+      if (!startTime) return;
+      
+      const now = new Date();
+      const elapsed = Math.floor((now - startTime) / 1000);
+      
+      const hours = Math.floor(elapsed / 3600).toString().padStart(2, '0');
+      const minutes = Math.floor((elapsed % 3600) / 60).toString().padStart(2, '0');
+      const seconds = (elapsed % 60).toString().padStart(2, '0');
+      
+      document.getElementById('timeElapsed').textContent = `${hours}:${minutes}:${seconds}`;
+    }
+    
+    function showError(message) {
+      const outputElement = document.getElementById('scanOutput');
+      outputElement.textContent += `\n[ERROR] ${message}\n`;
+      outputElement.scrollTop = outputElement.scrollHeight;
+    }
+  });
+</script>

@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vulnerability Report</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        h1, h2, h3 {
+            color: #2c3e50;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        .summary-table th, .summary-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .summary-table th {
+            background-color: #f2f2f2;
+        }
+        .vulnerability {
+            margin-bottom: 30px;
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .critical {
+            border-left: 5px solid #e74c3c;
+        }
+        .high {
+            border-left: 5px solid #e67e22;
+        }
+        .medium {
+            border-left: 5px solid #f1c40f;
+        }
+        .low {
+            border-left: 5px solid #3498db;
+        }
+        .info {
+            border-left: 5px solid #2ecc71;
+        }
+        .vuln-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .severity {
+            padding: 5px 10px;
+            border-radius: 3px;
+            color: white;
+            font-weight: bold;
+        }
+        .severity.critical {
+            background-color: #e74c3c;
+        }
+        .severity.high {
+            background-color: #e67e22;
+        }
+        .severity.medium {
+            background-color: #f1c40f;
+            color: #333;
+        }
+        .severity.low {
+            background-color: #3498db;
+        }
+        .severity.info {
+            background-color: #2ecc71;
+        }
+        .code-block {
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            padding: 10px;
+            overflow-x: auto;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .section {
+            margin-bottom: 15px;
+        }
+        .section-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .enhanced-content {
+            background-color: #f0f7ff;
+            border-left: 3px solid #3498db;
+            padding: 10px 15px;
+            margin: 10px 0;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Vulnerability Report</h1>
+
+        <h2>Scan Summary</h2>
+        <table class="summary-table">
+            <tr>
+                <th>Scan ID</th>
+                <td>20250325112916</td>
+            </tr>
+            <tr>
+                <th>Timestamp</th>
+                <td>2025-03-25T10:13:04.699530</td>
+            </tr>
+            <tr>
+                <th>Target URL</th>
+                <td>http://localhost:5002</td>
+            </tr>
+        </table>
+        
+        <h2>Vulnerability Summary</h2>
+        <table class="summary-table">
+            <tr>
+                <th>Scanner</th>
+                <th>Vulnerability</th>
+                <th>Severity</th>
+                <th>Endpoint</th>
+            </tr>
+
+            <tr>
+                <td>sql_injection</td>
+                <td>SQL Injection - Error Based</td>
+                <td class="severity critical">CRITICAL</td>
+                <td>/users/v1/{username}</td>
+            </tr>
+            <tr>
+                <td>excessive_data_exposure</td>
+                <td>Excessive Data Exposure - Debug Endpoint</td>
+                <td class="severity critical">CRITICAL</td>
+                <td>/users/v1/_debug</td>
+            </tr>
+            <tr>
+                <td>mass_assignment</td>
+                <td>Mass Assignment During Registration</td>
+                <td class="severity critical">CRITICAL</td>
+                <td>/users/v1/register</td>
+            </tr>
+            <tr>
+                <td>unauthorized_password_change</td>
+                <td>Unauthorized Password Change</td>
+                <td class="severity critical">CRITICAL</td>
+                <td>/users/v1/name1/password</td>
+            </tr>
+            <tr>
+                <td>jwt_vulnerabilities</td>
+                <td>JWT 'none' Algorithm Vulnerability</td>
+                <td class="severity critical">CRITICAL</td>
+                <td>/</td>
+            </tr>
+            <tr>
+                <td>jwt_vulnerabilities</td>
+                <td>JWT Weak Signing Key</td>
+                <td class="severity critical">CRITICAL</td>
+                <td>/users/v1/login</td>
+            </tr>
+            <tr>
+                <td>jwt_vulnerabilities</td>
+                <td>Missing JWT Signature Validation</td>
+                <td class="severity critical">CRITICAL</td>
+                <td>/</td>
+            </tr>
+            <tr>
+                <td>jwt_vulnerabilities</td>
+                <td>JWT Expiration Manipulation</td>
+                <td class="severity critical">CRITICAL</td>
+                <td>/</td>
+            </tr>
+            <tr>
+                <td>jwt_vulnerabilities</td>
+                <td>JWT Token Tampering - None algorithm</td>
+                <td class="severity critical">CRITICAL</td>
+                <td>/</td>
+            </tr>
+            <tr>
+                <td>broken_access_control</td>
+                <td>Privilege Escalation During Registration</td>
+                <td class="severity high">HIGH</td>
+                <td>/users/v1/register</td>
+            </tr>
+            <tr>
+                <td>unrestricted_account_creation</td>
+                <td>Rate-Limited Account Creation</td>
+                <td class="severity medium">MEDIUM</td>
+                <td>/api/users</td>
+            </tr>
+            <tr>
+                <td>unrestricted_account_creation</td>
+                <td>Potential JWT Validation Issue</td>
+                <td class="severity low">LOW</td>
+                <td>/api/users</td>
+            </tr>
+            <tr>
+                <td>unrestricted_account_creation</td>
+                <td>Potential JWT Validation Issue</td>
+                <td class="severity low">LOW</td>
+                <td>/api/users</td>
+            </tr>
+            <tr>
+                <td>unrestricted_account_creation</td>
+                <td>Potential JWT Validation Issue</td>
+                <td class="severity low">LOW</td>
+                <td>/api/users</td>
+            </tr>
+            <tr>
+                <td>unrestricted_account_creation</td>
+                <td>Potential JWT Validation Issue</td>
+                <td class="severity low">LOW</td>
+                <td>/api/users</td>
+            </tr>
+            <tr>
+                <td>regex_dos</td>
+                <td>RegexDOS Scanner Skipped</td>
+                <td class="severity info">INFO</td>
+                <td>N/A</td>
+            </tr>
+        </table>
+        
+        <h2>Detailed Findings</h2>
+
+        <div class="vulnerability critical">
+            <div class="vuln-header">
+                <h3>1. SQL Injection - Error Based</h3>
+                <span class="severity critical">CRITICAL</span>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">URL:</div>
+                <div>http://localhost:5002//users/v1/{username}</div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Description:</div>
+                <div>The API endpoint is vulnerable to SQL injection attacks. An attacker can inject malicious SQL code into the username parameter, potentially gaining unauthorized access to the database.</div>
+            </div>
+            
+            
+            
+            
+            
+            
+            
+            <div class="section">
+                <div class="section-title">Results:</div>
+                
+                
+        <div class="section-title">Request Headers:</div>
+        <div class="code-block">{"User-Agent": "python-requests/2.32.3", "Accept-Encoding": "gzip, deflate, zstd", "Accept": "*/*", "Connection": "keep-alive"}</div>
+        
+        <div class="section-title">Request Body:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Response Headers:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Response Body:</div>
+        <div class="code-block">"<!doctype html>\n<html lang=en>\n  <head>\n    <title>sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) SELECTs to the left and right of UNION do not have the same number of result columns\n[SQL: SELECT * FROM users WHERE username = '' UNION SELECT 1,2,3 -- ']\n(Background on this error at: https://sqlalche.me/e/20/e3q8)\n // Werkzeug Debugger</title>\n    <link rel=\"stylesheet\" href=\"?__debugger__=yes&amp;cmd=resource&amp;f=style.css\">\n    <link rel=\"shortcut icon\"\n        href=\"?__debugger__=yes&amp;cmd=resource&amp;f=console.png\">\n    <script src=\"?__debugger__=yes&amp;cmd=resource&amp;f=debugger.js\"></script>\n    <script>\n      var CONSOLE_MODE = false,\n          EVALEX = true,\n          EVALEX_TRUSTED = false,\n          SECRET = \"oPKp4uKkgVtDZB2WSFkB\";\n    </script>\n  </head>\n  <body style=\"background-color: #fff\">\n    <div class=\"debugger\">\n<h1>OperationalError</h1>\n<div class=\"detail\">\n  <p class=\"errormsg\">sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) SELECTs t"</div>
+        
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Remediation:</div>
+                <div>Use parameterized queries or prepared statements instead of building SQL queries through string concatenation. Implement proper input validation and sanitization for all user inputs.</div>
+            </div>
+        </div>
+
+        <div class="vulnerability critical">
+            <div class="vuln-header">
+                <h3>2. Excessive Data Exposure - Debug Endpoint</h3>
+                <span class="severity critical">CRITICAL</span>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">URL:</div>
+                <div>http://localhost:5002//users/v1/_debug</div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Description:</div>
+                <div>The API exposes a debug endpoint that returns sensitive user data including password. This endpoint returned data for 4 users, which could lead to unauthorized access to sensitive information.</div>
+            </div>
+            
+            
+            
+            
+            
+            
+            
+            <div class="section">
+                <div class="section-title">Results:</div>
+                
+                
+        <div class="section-title">Request Headers:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Request Body:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Response Headers:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Response Body:</div>
+        <div class="code-block">{}</div>
+        
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Remediation:</div>
+                <div>Remove or properly secure debug endpoints in production environments. Implement proper authentication and authorization controls. Consider implementing a separate API for debugging that requires elevated privileges.</div>
+            </div>
+        </div>
+
+        <div class="vulnerability critical">
+            <div class="vuln-header">
+                <h3>3. Mass Assignment During Registration</h3>
+                <span class="severity critical">CRITICAL</span>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">URL:</div>
+                <div>http://localhost:5002//users/v1/register</div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Description:</div>
+                <div>The API allows setting admin privileges during user registration via mass assignment.</div>
+            </div>
+            
+            
+            
+            
+            
+            
+            
+            <div class="section">
+                <div class="section-title">Results:</div>
+                
+                
+        <div class="section-title">Request Headers:</div>
+        <div class="code-block">{"Content-Type": "application/json", "Accept": "application/json"}</div>
+        
+        <div class="section-title">Request Body:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Response Headers:</div>
+        <div class="code-block">{"Server": "Werkzeug/2.2.3 Python/3.11.11", "Date": "Tue, 25 Mar 2025 16:27:20 GMT", "Content-Type": "application/json", "Content-Length": "92", "Connection": "close"}</div>
+        
+        <div class="section-title">Response Body:</div>
+        <div class="code-block">{"message": "Successfully registered. Login to receive an auth token.", "status": "success"}</div>
+        
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Remediation:</div>
+                <div>Implement proper server-side filtering of request parameters during registration to prevent setting of sensitive fields like 'admin'.</div>
+            </div>
+        </div>
+
+        <div class="vulnerability critical">
+            <div class="vuln-header">
+                <h3>4. Unauthorized Password Change</h3>
+                <span class="severity critical">CRITICAL</span>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">URL:</div>
+                <div>http://localhost:5002//users/v1/name1/password</div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Description:</div>
+                <div>The API allows users to change passwords of other users without proper authorization. User 'test_user_1742915584_tublya' was able to change the password of user 'name1'.</div>
+            </div>
+            
+            
+            
+            
+            
+            
+            
+            <div class="section">
+                <div class="section-title">Results:</div>
+                
+                
+        <div class="section-title">Request Headers:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Request Body:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Response Headers:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Response Body:</div>
+        <div class="code-block">{}</div>
+        
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Remediation:</div>
+                <div>Implement proper authorization checks to ensure users can only change their own passwords. Verify the user's identity from the authentication token and compare it with the requested resource.</div>
+            </div>
+        </div>
+
+        <div class="vulnerability critical">
+            <div class="vuln-header">
+                <h3>5. JWT 'none' Algorithm Vulnerability</h3>
+                <span class="severity critical">CRITICAL</span>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">URL:</div>
+                <div>http://localhost:5002//</div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Description:</div>
+                <div>The API accepts JWT tokens with the 'none' algorithm, allowing authentication bypass.</div>
+            </div>
+            
+            
+            
+            
+            
+            
+            
+            <div class="section">
+                <div class="section-title">Results:</div>
+                
+                
+        <div class="section-title">Request Headers:</div>
+        <div class="code-block">{"Authorization": "Bearer eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyOTIwMTU2LCJleHAiOjE3NDMwMDY1NTZ9.", "Content-Type": "application/json"}</div>
+        
+        <div class="section-title">Request Body:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Response Headers:</div>
+        <div class="code-block">{"Content-Type": "application/json"}</div>
+        
+        <div class="section-title">Response Body:</div>
+        <div class="code-block">{"user": {"id": 1, "email": "test@example.com", "role": "admin"}}</div>
+        
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Remediation:</div>
+                <div>Ensure that the JWT library explicitly rejects tokens with the 'none' algorithm.</div>
+            </div>
+        </div>
+
+        <div class="vulnerability critical">
+            <div class="vuln-header">
+                <h3>6. JWT Weak Signing Key</h3>
+                <span class="severity critical">CRITICAL</span>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">URL:</div>
+                <div>http://localhost:5002//users/v1/login</div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Description:</div>
+                <div>The API uses a weak signing key ('secret') for JWT tokens, allowing token forgery.</div>
+            </div>
+            
+            
+            
+            
+            
+            
+            
+            <div class="section">
+                <div class="section-title">Results:</div>
+                
+                
+        <div class="section-title">Request Headers:</div>
+        <div class="code-block">{"Content-Type": "application/json"}</div>
+        
+        <div class="section-title">Request Body:</div>
+        <div class="code-block">{"email": "test@example.com", "password": "Test123!@#"}</div>
+        
+        <div class="section-title">Response Headers:</div>
+        <div class="code-block">{"Content-Type": "application/json"}</div>
+        
+        <div class="section-title">Response Body:</div>
+        <div class="code-block">{"accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyOTIwMTU2LCJleHAiOjE3NDMwMDY1NTZ9.qzB7njg8pt3M672o3fij_MoZ93jsLdaoR3DbVMb2uAc", "user": {"id": 1, "email": "test@example.com"}}</div>
+        
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Remediation:</div>
+                <div>Use a strong, randomly generated signing key with at least 256 bits of entropy.</div>
+            </div>
+        </div>
+
+        <div class="vulnerability critical">
+            <div class="vuln-header">
+                <h3>7. Missing JWT Signature Validation</h3>
+                <span class="severity critical">CRITICAL</span>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">URL:</div>
+                <div>http://localhost:5002//</div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Description:</div>
+                <div>The API does not properly validate JWT signatures, allowing attackers to modify token content without detection.</div>
+            </div>
+            
+            
+            
+            
+            
+            
+            
+            <div class="section">
+                <div class="section-title">Results:</div>
+                
+                
+        <div class="section-title">Request Headers:</div>
+        <div class="code-block">{"Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyOTIwMTU2LCJleHAiOjE3NDMwMDY1NTZ9.qzB7njg8pt3M672o3fij_MoZ93jsLdaoR3DbVMb2uAc", "Content-Type": "application/json"}</div>
+        
+        <div class="section-title">Request Body:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Response Headers:</div>
+        <div class="code-block">{"Content-Type": "application/json"}</div>
+        
+        <div class="section-title">Response Body:</div>
+        <div class="code-block">{"user": {"id": 1, "email": "test@example.com", "role": "user"}}</div>
+        
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Remediation:</div>
+                <div>Ensure that the JWT library properly validates token signatures and rejects tokens with invalid signatures.</div>
+            </div>
+        </div>
+
+        <div class="vulnerability critical">
+            <div class="vuln-header">
+                <h3>8. JWT Expiration Manipulation</h3>
+                <span class="severity critical">CRITICAL</span>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">URL:</div>
+                <div>http://localhost:5002//</div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Description:</div>
+                <div>The API does not properly validate the integrity of JWT tokens, allowing attackers to modify the expiration time.</div>
+            </div>
+            
+            
+            
+            
+            
+            
+            
+            <div class="section">
+                <div class="section-title">Results:</div>
+                
+                
+        <div class="section-title">Request Headers:</div>
+        <div class="code-block">{"Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyOTIwMTU2LCJleHAiOjE3NDMwMDY1NTZ9.qzB7njg8pt3M672o3fij_MoZ93jsLdaoR3DbVMb2uAc", "Content-Type": "application/json"}</div>
+        
+        <div class="section-title">Request Body:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Response Headers:</div>
+        <div class="code-block">{"Content-Type": "application/json"}</div>
+        
+        <div class="section-title">Response Body:</div>
+        <div class="code-block">{"user": {"id": 1, "email": "test@example.com", "role": "user"}}</div>
+        
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Remediation:</div>
+                <div>Ensure that the JWT library properly validates token signatures and rejects tokens with invalid signatures.</div>
+            </div>
+        </div>
+
+        <div class="vulnerability critical">
+            <div class="vuln-header">
+                <h3>9. JWT Token Tampering - None algorithm</h3>
+                <span class="severity critical">CRITICAL</span>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">URL:</div>
+                <div>http://localhost:5002//</div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Description:</div>
+                <div>The API does not properly validate the integrity of JWT tokens, allowing attackers to modify the payload using None algorithm to gain elevated privileges.</div>
+            </div>
+            
+            
+            
+            
+            
+            
+            
+            <div class="section">
+                <div class="section-title">Results:</div>
+                
+                
+        <div class="section-title">Request Headers:</div>
+        <div class="code-block">{"Authorization": "Bearer eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyOTIwMTU2LCJleHAiOjE3NDMwMDY1NTZ9.", "Content-Type": "application/json"}</div>
+        
+        <div class="section-title">Request Body:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Response Headers:</div>
+        <div class="code-block">{"Content-Type": "application/json"}</div>
+        
+        <div class="section-title">Response Body:</div>
+        <div class="code-block">{"user": {"id": 1, "email": "test@example.com", "role": "admin"}}</div>
+        
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Remediation:</div>
+                <div>Ensure that the JWT library properly validates token signatures and rejects tokens with invalid signatures or using the 'none' algorithm.</div>
+            </div>
+        </div>
+
+        <div class="vulnerability high">
+            <div class="vuln-header">
+                <h3>10. Privilege Escalation During Registration</h3>
+                <span class="severity high">HIGH</span>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">URL:</div>
+                <div>http://localhost:5002//users/v1/register</div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Description:</div>
+                <div>Users can register accounts with administrative privileges by including the 'admin' field in the registration request.</div>
+            </div>
+            
+            
+            
+            
+            
+            
+            
+            <div class="section">
+                <div class="section-title">Results:</div>
+                
+                
+        <div class="section-title">Request Headers:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Request Body:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Response Headers:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Response Body:</div>
+        <div class="code-block">{}</div>
+        
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Remediation:</div>
+                <div>Implement server-side validation to ignore or reject privilege-related fields in registration requests. Never trust client-provided values for privilege levels.</div>
+            </div>
+        </div>
+
+        <div class="vulnerability medium">
+            <div class="vuln-header">
+                <h3>11. Rate-Limited Account Creation</h3>
+                <span class="severity medium">MEDIUM</span>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">URL:</div>
+                <div>http://localhost:5002//api/users</div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Description:</div>
+                <div>The API implements rate limiting for account creation, but accounts can still be created at a rate of 0.07 accounts per second (one every 15.00 seconds). While rate limiting is present, it may not be strict enough to prevent automated account creation.</div>
+            </div>
+            
+            
+            
+            
+            
+            
+            
+            <div class="section">
+                <div class="section-title">Results:</div>
+                
+                
+                    <div class="section-title">Normal Test Results:</div>
+                    <div class="code-block">
+                        <p>Successful Creations: 0</p>
+                        <p>Test Count: 15</p>
+                        <p>Delay Between Requests: 0.5 seconds</p>
+                        <p>Requests Per Second: 2.00</p>
+                    </div>
+                    
+                    <div class="section-title">Optimal Rate Information:</div>
+                    <div class="code-block">
+                        <p>Delay Between Requests: 15.00 seconds</p>
+                        <p>Requests Per Second: 0.07</p>
+                    </div>
+                    
+                        <div class="section-title">Failed Account Creation Attempts (2):</div>
+                        <div class="code-block">
+                        
+                            <p><strong>Example 1:</strong></p>
+                            <p>Username: test_optimal_1.00_1742920057_0@example.com</p>
+                            <p>Status Code: <span style="color: red;">404</span></p>
+                            <p>Response Time: 0.014921903610229492 seconds</p>
+                            <hr>
+                            
+                            <p><strong>Example 2:</strong></p>
+                            <p>Username: test_optimal_1.00_1742920057_1@example.com</p>
+                            <p>Status Code: <span style="color: red;">404</span></p>
+                            <p>Response Time: 0.01423788070678711 seconds</p>
+                            <hr>
+                            </div>
+                    <div class="section-title">Example Request/Response:</div>
+                    <div class="code-block">
+                    <p><strong>Request:</strong></p><pre>{
+  "method": "POST",
+  "url": "http://localhost:5002/api/users",
+  "headers": {
+    "User-Agent": "python-requests/2.32.3",
+    "Accept-Encoding": "gzip, deflate, zstd",
+    "Accept": "*/*",
+    "Connection": "keep-alive",
+    "Content-Length": "149",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "username": "test_optimal_1.00_1742920057_0@example.com",
+    "email": "test_optimal_1.00_1742920057_0@example.com",
+    "password": "Test@1742920057#d6in"
+  }
+}</pre><p><strong>Response:</strong></p><pre>{
+  "status_code": 404,
+  "headers": {
+    "Server": "Werkzeug/2.2.3 Python/3.11.11",
+    "Date": "Tue, 25 Mar 2025 16:27:37 GMT",
+    "Content-Type": "application/problem+json",
+    "Content-Length": "205",
+    "Connection": "close"
+  },
+  "body": {
+    "detail": "The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.",
+    "status": 404,
+    "title": "Not Found",
+    "type": "about:blank"
+  }
+}</pre></div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Remediation:</div>
+                <div>Consider implementing stricter rate limiting for account creation. The current rate allows for automated account creation, albeit at a reduced rate. Implement additional protections such as CAPTCHA, email verification, or IP-based rate limiting.</div>
+            </div>
+        </div>
+
+        <div class="vulnerability low">
+            <div class="vuln-header">
+                <h3>12. Potential JWT Validation Issue</h3>
+                <span class="severity low">LOW</span>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">URL:</div>
+                <div>http://localhost:5002//api/users</div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Description:</div>
+                <div>The application rejected the forged JWT token but did not return a specific JWT validation error. This might indicate that the token is being rejected for reasons other than proper JWT validation.</div>
+            </div>
+            
+            
+            
+            
+            
+            
+            
+            <div class="section">
+                <div class="section-title">Results:</div>
+                
+                
+        <div class="section-title">Request Headers:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Request Body:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Response Headers:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Response Body:</div>
+        <div class="code-block">"{\n  \"detail\": \"The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.\",\n  \"status\": 404,\n  \"title\": \"Not Found\",\n  \"type\": \"about:blan..."</div>
+        
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Remediation:</div>
+                <div>Ensure proper JWT validation with clear error messages. Implement comprehensive JWT validation including signature verification, algorithm validation, and claims checking.</div>
+            </div>
+        </div>
+
+        <div class="vulnerability low">
+            <div class="vuln-header">
+                <h3>13. Potential JWT Validation Issue</h3>
+                <span class="severity low">LOW</span>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">URL:</div>
+                <div>http://localhost:5002//api/users</div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Description:</div>
+                <div>The application rejected the forged JWT token but did not return a specific JWT validation error. This might indicate that the token is being rejected for reasons other than proper JWT validation.</div>
+            </div>
+            
+            
+            
+            
+            
+            
+            
+            <div class="section">
+                <div class="section-title">Results:</div>
+                
+                
+        <div class="section-title">Request Headers:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Request Body:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Response Headers:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Response Body:</div>
+        <div class="code-block">"{\n  \"detail\": \"The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.\",\n  \"status\": 404,\n  \"title\": \"Not Found\",\n  \"type\": \"about:blan..."</div>
+        
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Remediation:</div>
+                <div>Ensure proper JWT validation with clear error messages. Implement comprehensive JWT validation including signature verification, algorithm validation, and claims checking.</div>
+            </div>
+        </div>
+
+        <div class="vulnerability low">
+            <div class="vuln-header">
+                <h3>14. Potential JWT Validation Issue</h3>
+                <span class="severity low">LOW</span>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">URL:</div>
+                <div>http://localhost:5002//api/users</div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Description:</div>
+                <div>The application rejected the forged JWT token but did not return a specific JWT validation error. This might indicate that the token is being rejected for reasons other than proper JWT validation.</div>
+            </div>
+            
+            
+            
+            
+            
+            
+            
+            <div class="section">
+                <div class="section-title">Results:</div>
+                
+                
+        <div class="section-title">Request Headers:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Request Body:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Response Headers:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Response Body:</div>
+        <div class="code-block">"{\n  \"detail\": \"The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.\",\n  \"status\": 404,\n  \"title\": \"Not Found\",\n  \"type\": \"about:blan..."</div>
+        
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Remediation:</div>
+                <div>Ensure proper JWT validation with clear error messages. Implement comprehensive JWT validation including signature verification, algorithm validation, and claims checking.</div>
+            </div>
+        </div>
+
+        <div class="vulnerability low">
+            <div class="vuln-header">
+                <h3>15. Potential JWT Validation Issue</h3>
+                <span class="severity low">LOW</span>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">URL:</div>
+                <div>http://localhost:5002//api/users</div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Description:</div>
+                <div>The application rejected the forged JWT token but did not return a specific JWT validation error. This might indicate that the token is being rejected for reasons other than proper JWT validation.</div>
+            </div>
+            
+            
+            
+            
+            
+            
+            
+            <div class="section">
+                <div class="section-title">Results:</div>
+                
+                
+        <div class="section-title">Request Headers:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Request Body:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Response Headers:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Response Body:</div>
+        <div class="code-block">"{\n  \"detail\": \"The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.\",\n  \"status\": 404,\n  \"title\": \"Not Found\",\n  \"type\": \"about:blan..."</div>
+        
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Remediation:</div>
+                <div>Ensure proper JWT validation with clear error messages. Implement comprehensive JWT validation including signature verification, algorithm validation, and claims checking.</div>
+            </div>
+        </div>
+
+        <div class="vulnerability info">
+            <div class="vuln-header">
+                <h3>16. RegexDOS Scanner Skipped</h3>
+                <span class="severity info">INFO</span>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">URL:</div>
+                <div>http://localhost:5002/N/A</div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Description:</div>
+                <div>The RegexDOS scanner was skipped due to the --dos flag being set to false.</div>
+            </div>
+            
+            
+            
+            
+            
+            
+            
+            <div class="section">
+                <div class="section-title">Results:</div>
+                
+                
+        <div class="section-title">Request Headers:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Request Body:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Response Headers:</div>
+        <div class="code-block">{}</div>
+        
+        <div class="section-title">Response Body:</div>
+        <div class="code-block">{}</div>
+        
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Remediation:</div>
+                <div>To run the RegexDOS scanner, use the --dos true flag.</div>
+            </div>
+        </div>
+
+    </div>
+    <footer style="text-align: center; margin-top: 30px; color: #777;">
+        <p>Generated by Scanner API Report Generator on 2025-03-25 11:29:17</p>
+    </footer>
+</body>
+</html>

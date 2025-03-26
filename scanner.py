@@ -29,12 +29,13 @@ from core.config import load_config, validate_config, update_config_with_openapi
 from core.utils import format_results, save_results
 from core.exceptions import ScannerConfigError, ScannerExecutionError
 from core.openapi import load_openapi_spec, extract_server_urls, extract_endpoints
+from core.account_cache import account_cache
 
 
 class ScannerOrchestrator:
     """Master orchestration class for managing scanner modules."""
 
-    def __init__(self, config_path: str, url_override: str = None, swagger_path: str = None, run_dos_scanner: bool = False):
+    def __init__(self, config_path: str, url_override: str = None, swagger_path: str = None, run_dos_scanner: bool = False, sql_intensity: str = "blind"):
         """
         Initialize the scanner orchestrator.
         
@@ -54,6 +55,7 @@ class ScannerOrchestrator:
         self.swagger_path = swagger_path
         self.openapi_spec = None
         self.openapi_endpoints = []
+        self.sql_intensity = sql_intensity
         self.logger = get_logger("orchestrator")
 
     def load_configuration(self) -> None:
@@ -118,6 +120,47 @@ class ScannerOrchestrator:
             self.logger.error(f"Failed to load OpenAPI specification: {str(e)}")
             raise ScannerConfigError(f"OpenAPI specification error: {str(e)}")
     
+    def _clear_and_initialize_account_cache(self) -> None:
+        """Clear the account cache and initialize it with three test accounts."""
+        self.logger.info("Clearing account cache before scan")
+        account_cache.clear_cache()
+        
+        # Create three test accounts with different usernames and emails
+        timestamp = int(time.time())
+        base_url = self.config.get("target", {}).get("base_url")
+        
+        if not base_url:
+            self.logger.warn("No base URL found in configuration, skipping test account creation")
+            return
+            
+        # Get the register endpoint from configuration or use default
+        register_endpoint = "/auth/sign-up"
+        for scanner_config in self.config.get("scanners", []):
+            if scanner_config.get("name") == "unrestricted_account_creation":
+                register_endpoint = scanner_config.get("config", {}).get("register_endpoint", register_endpoint)
+                break
+        
+        # Create three test accounts with different credentials
+        for i in range(1, 4):
+            username = f"test_user_{timestamp}_{i}"
+            email = f"{username}@example.com"
+            password = f"Test@{timestamp}_{i}"
+            
+            account = {
+                "username": username,
+                "email": email,
+                "password": password,
+                "created_for": register_endpoint,
+                "base_url": base_url,
+                "created_at": time.time(),
+                "last_used": time.time()
+            }
+            
+            account_cache.add_account(account)
+            self.logger.info(f"Added test account to cache: {username}")
+        
+        self.logger.info(f"Initialized account cache with 3 test accounts")
+    
     def _apply_url_override(self) -> None:
         """Apply URL override to the configuration."""
         if not self.url_override:
@@ -181,6 +224,30 @@ class ScannerOrchestrator:
                 }
                 continue
                 
+            # Handle SQL injection scanner based on intensity parameter
+            if scanner_name == "sql_injection" and self.sql_intensity == "none":
+                self.logger.info(f"SQL injection scanner is disabled via --sqlintensity none flag, skipping execution")
+                # Add a placeholder result for SQL injection scanner to maintain consistent reporting
+                self.results[scanner_name] = {
+                    "name": scanner_name,
+                    "status": "skipped",
+                    "findings": [
+                        {
+                            "vulnerability": "SQL Injection Scanner Skipped",
+                            "severity": "INFO",
+                            "endpoint": "N/A",
+                            "details": "The SQL injection scanner was skipped due to the --sqlintensity flag being set to none.",
+                            "timestamp": time.time(),
+                            "evidence": None,
+                            "remediation": "To run the SQL injection scanner, use --sqlintensity blind or --sqlintensity smart."
+                        }
+                    ],
+                    "start_time": time.time(),
+                    "end_time": time.time(),
+                    "duration": 0
+                }
+                continue
+                
             try:
                 # Import the scanner module dynamically
                 module_path = f"scanners.{scanner_name}"
@@ -192,9 +259,16 @@ class ScannerOrchestrator:
                 self.logger.debug(f"Found Scanner class in module: {module_path}")
                 
                 # Create scanner instance with its configuration
+                scanner_config_data = scanner_config.get("config", {})
+                
+                # For SQL injection scanner, add the intensity parameter from command line
+                if scanner_name == "sql_injection" and self.sql_intensity != "none":
+                    scanner_config_data["intensity"] = self.sql_intensity
+                    self.logger.info(f"Setting SQL injection intensity to: {self.sql_intensity}")
+                
                 scanner_instance = scanner_class(
                     target=self.config.get("target", {}),
-                    config=scanner_config.get("config", {})
+                    config=scanner_config_data
                 )
                 self.logger.debug(f"Successfully instantiated scanner: {scanner_name}")
                 
@@ -325,6 +399,9 @@ class ScannerOrchestrator:
                 else:
                     sequential_scanners.append(scanner)
             
+            # Clear account cache before running scanners
+            self._clear_and_initialize_account_cache()
+            
             # Run sequential scanners
             sequential_results = []
             for scanner in sequential_scanners:
@@ -421,11 +498,35 @@ class ScannerOrchestrator:
                     "source": self.config.get("target", {}).get("openapi_source", "none")
                 }
             
-            # Save results if configured
-            if self.config.get("output", {}).get("save_results", True):
-                output_dir = self.config.get("output", {}).get("directory", "results")
-                output_format = self.config.get("output", {}).get("format", "json")
-                save_results(self.results, output_dir, output_format)
+            # Check if output configuration exists, use fallback values if not
+            output_config = self.config.get("output", {})
+            save_results_enabled = output_config.get("save_results", True)
+            
+            # Print scan ID information for the web interface to capture
+            scan_id = self.results.get("scan_id", "unknown")
+            print(f"Scan ID: {scan_id}")
+            
+            # Save results if enabled (default is True)
+            if save_results_enabled:
+                # Use absolute path for output directory with fallback
+                relative_output_dir = output_config.get("directory", "results")
+                output_dir = os.path.abspath(relative_output_dir)
+                output_format = output_config.get("format", "json")
+                
+                self.logger.info(f"Saving results to {output_dir}")
+                self.logger.info(f"Scan ID: {scan_id}")
+                
+                # Make sure the directory exists
+                if not os.path.exists(output_dir):
+                    os.makedirs(output_dir, exist_ok=True)
+                    self.logger.info(f"Created output directory: {output_dir}")
+                
+                # Save the results
+                result_file = save_results(self.results, output_dir, output_format)
+                self.logger.info(f"Results saved to: {result_file}")
+                print(f"Results saved to: {result_file}")
+            else:
+                self.logger.info("Result saving is disabled in configuration")
             
             self.logger.info(f"Scan completed. Found {self.results['summary']['total_findings']} potential vulnerabilities")
             return self.results
@@ -448,6 +549,8 @@ def main():
     parser.add_argument("--swagger", "-s", help="Path to OpenAPI/Swagger specification file (JSON or YAML)")
     parser.add_argument("--dos", choices=["true", "false"], default="false",
                         help="Control whether the RegexDOS scanner runs (default: false)")
+    parser.add_argument("--sqlintensity", choices=["none", "blind", "smart"], default="blind",
+                        help="SQL injection scan intensity (none: skip, blind: standard, smart: intelligent testing)")
     args = parser.parse_args()
     
     # Handle config path - check if it's a relative path without directory
@@ -494,12 +597,83 @@ def main():
             logger.error(f"OpenAPI specification file not found: {args.swagger}")
             sys.exit(1)
         
+        # Clear the account cache and create test accounts before running the scan
+        logger.info("Clearing account cache before scan")
+        account_cache.clear_cache()
+        
+        # Create three test accounts with unique credentials
+        logger.info("Creating test accounts for scan")
+        base_url = args.url
+        
+        # If no URL override is provided, try to get it from the config
+        if not base_url:
+            try:
+                with open(args.config, "r") as f:
+                    if args.config.endswith(".yaml") or args.config.endswith(".yml"):
+                        config = yaml.safe_load(f)
+                    else:
+                        config = json.load(f)
+                base_url = config.get("target", {}).get("base_url", "")
+            except Exception:
+                logger.warning("Could not determine base URL from config")
+        
+        # Create test accounts if we have a base URL
+        if base_url:
+            try:
+                # Ensure base URL ends with a slash
+                if not base_url.endswith("/"):
+                    base_url += "/"
+                    
+                # Determine the register endpoint from config
+                register_endpoint = "auth/sign-up"  # Default for Snorefox API
+                
+                # Create three test accounts with unique credentials
+                for i in range(3):
+                    timestamp = int(time.time()) + i
+                    email = f"test{timestamp}@example.com"
+                    password = f"TestPassword{timestamp}!"
+                    
+                    # Prepare registration data - only send fields required by the API
+                    register_data = {
+                        "email": email,
+                        "password": password
+                    }
+                    
+                    # Register the account
+                    try:
+                        response = requests.post(
+                            f"{base_url}{register_endpoint}",
+                            json=register_data,
+                            headers={"Content-Type": "application/json"},
+                            timeout=10
+                        )
+                        
+                        if response.status_code < 400:
+                            # Add account to cache
+                            account_cache.add_account({
+                                "email": email,
+                                "username": email,  # Use email as username for Snorefox API
+                                "password": password,
+                                "endpoint": register_endpoint,
+                                "response": response.json() if response.text else {}
+                            })
+                            logger.info(f"Created test account: {email}")
+                        else:
+                            logger.warning(f"Failed to create test account: {email}, status: {response.status_code}")
+                    except Exception as e:
+                        logger.warning(f"Error creating test account: {str(e)}")
+            except Exception as e:
+                logger.warning(f"Error setting up test accounts: {str(e)}")
+        else:
+            logger.warning("No base URL provided, skipping test account creation")
+            
         # Run the scanner orchestrator
         orchestrator = ScannerOrchestrator(
             config_path=args.config,
             url_override=args.url,
             swagger_path=args.swagger,
-            run_dos_scanner=(args.dos.lower() == "true")
+            run_dos_scanner=(args.dos.lower() == "true"),
+            sql_intensity=args.sqlintensity
         )
         results = orchestrator.run()
         

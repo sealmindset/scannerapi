@@ -1,0 +1,849 @@
+{{#if message}}
+<div class="alert alert-{{messageType}}">
+  {{message}}
+</div>
+{{/if}}
+
+<div class="container">
+  <h1>LLM Prompt Management</h1>
+  <p class="lead">Manage prompts used for LLM-enhanced scan reports</p>
+  
+  <!-- Tab navigation -->
+  <ul class="nav nav-tabs mb-4" id="promptTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button" role="tab" aria-controls="overview" aria-selected="true">Overview</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="scan-prompts-tab" data-bs-toggle="tab" data-bs-target="#scan-prompts" type="button" role="tab" aria-controls="scan-prompts" aria-selected="false">Scan Prompts</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="report-prompts-tab" data-bs-toggle="tab" data-bs-target="#report-prompts" type="button" role="tab" aria-controls="report-prompts" aria-selected="false">Report Prompts</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="vulnerability-prompts-tab" data-bs-toggle="tab" data-bs-target="#vulnerability-prompts" type="button" role="tab" aria-controls="vulnerability-prompts" aria-selected="false">Vulnerability Prompts</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="backup-tab" data-bs-toggle="tab" data-bs-target="#backup" type="button" role="tab" aria-controls="backup" aria-selected="false">Backup & Restore</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings" type="button" role="tab" aria-controls="settings" aria-selected="false">Settings</button>
+    </li>
+  </ul>
+  
+  <!-- Tab content -->
+  <div class="tab-content" id="promptTabsContent">
+    <!-- Overview Tab -->
+    <div class="tab-pane fade show active" id="overview" role="tabpanel" aria-labelledby="overview-tab">
+      <div class="row">
+        <div class="col-md-12">
+          <div class="card mb-4">
+            <div class="card-header">
+              <h5>Prompt Statistics</h5>
+            </div>
+            <div class="card-body">
+              <p>Total number of prompts in the system: <strong>{{totalTemplates}}</strong></p>
+              <p>Prompts are organized by category in the tabs above.</p>
+              <div class="mt-3">
+                <button class="btn btn-primary" id="create-backup-btn">Create Backup</button>
+              </div>
+            </div>
+          </div>
+          
+          <div class="card mb-4">
+            <div class="card-header">
+              <h5>Prompt Categories</h5>
+            </div>
+            <div class="card-body">
+              <div class="row">
+                <div class="col-md-4 mb-3">
+                  <div class="card h-100">
+                    <div class="card-body">
+                      <h5 class="card-title">Scan Prompts</h5>
+                      <p class="card-text">Prompts used during the scanning process to analyze API endpoints and detect vulnerabilities.</p>
+                      <button class="btn btn-sm btn-outline-primary goto-tab" data-tab="scan-prompts-tab">View Scan Prompts</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                  <div class="card h-100">
+                    <div class="card-body">
+                      <h5 class="card-title">Report Prompts</h5>
+                      <p class="card-text">Prompts used to generate comprehensive security reports from scan results.</p>
+                      <button class="btn btn-sm btn-outline-primary goto-tab" data-tab="report-prompts-tab">View Report Prompts</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                  <div class="card h-100">
+                    <div class="card-body">
+                      <h5 class="card-title">Vulnerability Prompts</h5>
+                      <p class="card-text">Prompts specific to different types of vulnerabilities for detailed analysis.</p>
+                      <button class="btn btn-sm btn-outline-primary goto-tab" data-tab="vulnerability-prompts-tab">View Vulnerability Prompts</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Scan Prompts Tab -->
+    <div class="tab-pane fade" id="scan-prompts" role="tabpanel" aria-labelledby="scan-prompts-tab">
+      <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">Scan Prompts</h5>
+          <button class="btn btn-sm btn-outline-primary" id="load-scan-prompts">Load Prompts</button>
+        </div>
+        <div class="card-body">
+          <p class="text-muted mb-3">Prompts used during API scanning to detect vulnerabilities. Click "Load Prompts" to view available scan prompts.</p>
+          <div id="scan-prompts-container">
+            <div class="text-center py-5">
+              <i class="bi bi-arrow-clockwise" style="font-size: 2rem;"></i>
+              <p class="mt-3">Click "Load Prompts" to view scan prompts</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Report Prompts Tab -->
+    <div class="tab-pane fade" id="report-prompts" role="tabpanel" aria-labelledby="report-prompts-tab">
+      <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">Report Prompts</h5>
+          <button class="btn btn-sm btn-outline-primary" id="load-report-prompts">Load Prompts</button>
+        </div>
+        <div class="card-body">
+          <p class="text-muted mb-3">Prompts used to generate comprehensive security reports. Click "Load Prompts" to view available report prompts.</p>
+          <div id="report-prompts-container">
+            <div class="text-center py-5">
+              <i class="bi bi-arrow-clockwise" style="font-size: 2rem;"></i>
+              <p class="mt-3">Click "Load Prompts" to view report prompts</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Vulnerability Prompts Tab -->
+    <div class="tab-pane fade" id="vulnerability-prompts" role="tabpanel" aria-labelledby="vulnerability-prompts-tab">
+      <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">Vulnerability Prompts</h5>
+          <button class="btn btn-sm btn-outline-primary" id="load-vulnerability-prompts">Load Prompts</button>
+        </div>
+        <div class="card-body">
+          <p class="text-muted mb-3">Prompts specific to different types of vulnerabilities. Click "Load Prompts" to view available vulnerability prompts.</p>
+          <div id="vulnerability-prompts-container">
+            <div class="text-center py-5">
+              <i class="bi bi-arrow-clockwise" style="font-size: 2rem;"></i>
+              <p class="mt-3">Click "Load Prompts" to view vulnerability prompts</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Backup Tab -->
+    <div class="tab-pane fade" id="backup" role="tabpanel" aria-labelledby="backup-tab">
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5>Backup Management</h5>
+        </div>
+        <div class="card-body">
+          <p class="mb-3">Create, restore, or delete backups of all LLM prompts.</p>
+          <div class="mb-3">
+            <button class="btn btn-primary" id="create-backup-btn-tab">Create New Backup</button>
+          </div>
+          
+          {{#if backups.length}}
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Backup File</th>
+                  <th>Date</th>
+                  <th>Size</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {{#each backups}}
+                <tr>
+                  <td>{{this.filename}}</td>
+                  <td>{{this.date}}</td>
+                  <td>{{this.size}} bytes</td>
+                  <td>
+                    <button class="btn btn-sm btn-success restore-backup-btn" data-filename="{{this.filename}}">Restore</button>
+                    <button class="btn btn-sm btn-danger delete-backup-btn" data-filename="{{this.filename}}">Delete</button>
+                  </td>
+                </tr>
+                {{/each}}
+              </tbody>
+            </table>
+          {{else}}
+            <p>No backups found. Create a backup to save the current prompts.</p>
+          {{/if}}
+        </div>
+      </div>
+    </div>
+    
+    <!-- Settings Tab -->
+    <div class="tab-pane fade" id="settings" role="tabpanel" aria-labelledby="settings-tab">
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5>LLM Settings</h5>
+        </div>
+        <div class="card-body">
+          <form id="settings-form">
+            <div class="form-group">
+              <label for="defaultProvider">Default Provider</label>
+              <select class="form-control" id="defaultProvider" name="defaultProvider">
+                <option value="ollama" {{#if (eq settings.defaultProvider "ollama")}}selected{{/if}}>Ollama</option>
+                <option value="openai" {{#if (eq settings.defaultProvider "openai")}}selected{{/if}}>OpenAI</option>
+              </select>
+            </div>
+            <div class="form-group mt-3">
+              <label for="defaultModel">Default Model</label>
+              <input type="text" class="form-control" id="defaultModel" name="defaultModel" value="{{settings.defaultModel}}">
+            </div>
+            <button type="submit" class="btn btn-primary mt-3">Save Settings</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // Add event listener to clean up modal backdrop when any modal is hidden
+    document.addEventListener('hidden.bs.modal', function() {
+      // Remove any lingering backdrop
+      const backdrop = document.querySelector('.modal-backdrop');
+      if (backdrop) backdrop.remove();
+      document.body.classList.remove('modal-open');
+      document.body.style.overflow = '';
+      document.body.style.paddingRight = '';
+    });
+    
+    // Tab navigation
+    document.querySelectorAll('.goto-tab').forEach(button => {
+      button.addEventListener('click', function() {
+        const tabId = this.getAttribute('data-tab');
+        const tab = document.getElementById(tabId);
+        if (tab) {
+          tab.click();
+        }
+      });
+    });
+
+    // Create backup (overview tab)
+    document.getElementById('create-backup-btn').addEventListener('click', function() {
+      if (confirm('Create a new backup of all prompts?')) {
+        createBackup();
+      }
+    });
+
+    // Create backup (backup tab)
+    document.getElementById('create-backup-btn-tab').addEventListener('click', function() {
+      if (confirm('Create a new backup of all prompts?')) {
+        createBackup();
+      }
+    });
+
+    // Restore backup
+    document.querySelectorAll('.restore-backup-btn').forEach(button => {
+      button.addEventListener('click', function() {
+        const filename = this.getAttribute('data-filename');
+        if (confirm(`Restore from backup "${filename}"? This will overwrite all current prompts.`)) {
+          fetch('/admin/prompts/backup/restore', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ filename })
+          })
+          .then(response => response.json())
+          .then(data => {
+            if (data.success) {
+              window.location.href = '/admin/prompts?message=Backup restored successfully&messageType=success';
+            } else {
+              alert('Error restoring backup: ' + data.error);
+            }
+          })
+          .catch(error => {
+            console.error('Error:', error);
+            alert('Error restoring backup');
+          });
+        }
+      });
+    });
+
+    // Delete backup
+    document.querySelectorAll('.delete-backup-btn').forEach(button => {
+      button.addEventListener('click', function() {
+        const filename = this.getAttribute('data-filename');
+        if (confirm(`Delete backup "${filename}"? This cannot be undone.`)) {
+          fetch('/admin/prompts/backup/delete', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ filename })
+          })
+          .then(response => response.json())
+          .then(data => {
+            if (data.success) {
+              window.location.href = '/admin/prompts?message=Backup deleted successfully&messageType=success';
+            } else {
+              alert('Error deleting backup: ' + data.error);
+            }
+          })
+          .catch(error => {
+            console.error('Error:', error);
+            alert('Error deleting backup');
+          });
+        }
+      });
+    });
+
+    // Settings form
+    document.getElementById('settings-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const defaultProvider = document.getElementById('defaultProvider').value;
+      const defaultModel = document.getElementById('defaultModel').value;
+
+      fetch('/admin/prompts/settings/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ defaultProvider, defaultModel })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          window.location.href = '/admin/prompts?message=Settings updated successfully&messageType=success';
+        } else {
+          alert('Error updating settings: ' + data.error);
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        alert('Error updating settings');
+      });
+    });
+
+    // Load scan prompts
+    document.getElementById('load-scan-prompts').addEventListener('click', function() {
+      loadPromptsByType('scan');
+    });
+
+    // Load report prompts
+    document.getElementById('load-report-prompts').addEventListener('click', function() {
+      loadPromptsByType('report');
+    });
+
+    // Load vulnerability prompts
+    document.getElementById('load-vulnerability-prompts').addEventListener('click', function() {
+      loadPromptsByType('vulnerability');
+    });
+
+    // Helper function to create backup
+    function createBackup() {
+      fetch('/admin/prompts/backup/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          window.location.href = '/admin/prompts?message=Backup created successfully&messageType=success';
+        } else {
+          alert('Error creating backup: ' + data.error);
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        alert('Error creating backup');
+      });
+    }
+
+    // Helper function to load prompts by type
+    function loadPromptsByType(type) {
+      const containerId = `${type}-prompts-container`;
+      const container = document.getElementById(containerId);
+      
+      if (!container) return;
+      
+      container.innerHTML = `
+        <div class="text-center py-5">
+          <i class="bi bi-arrow-repeat spin" style="font-size: 2rem;"></i>
+          <p class="mt-3">Loading ${type} prompts...</p>
+        </div>
+      `;
+      
+      fetch(`/admin/prompts/list/${type}`)
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          if (data.success) {
+            if (data.prompts && data.prompts.length > 0) {
+              let html = '<div class="row">';
+              
+              // Group prompts into categories
+              const categories = {};
+              data.prompts.forEach(prompt => {
+                const category = prompt.category || 'Uncategorized';
+                if (!categories[category]) {
+                  categories[category] = [];
+                }
+                categories[category].push(prompt);
+              });
+              
+              // If there are no categories, create a default one
+              if (Object.keys(categories).length === 0) {
+                categories['General'] = data.prompts;
+              }
+              
+              // Generate HTML for each category
+              for (const [category, prompts] of Object.entries(categories)) {
+                const categoryId = category.replace(/\s+/g, '-').toLowerCase();
+                html += `
+                  <div class="col-12 mb-4">
+                    <div class="card">
+                      <div class="card-header">
+                        <h5>${category}</h5>
+                      </div>
+                      <div class="card-body">
+                        <div class="accordion" id="accordion-${categoryId}">
+                `;
+                
+                prompts.forEach((prompt, index) => {
+                  const promptId = `${categoryId}-${index}`;
+                  html += `
+                    <div class="accordion-item">
+                      <h2 class="accordion-header" id="heading-${promptId}">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${promptId}" aria-expanded="false" aria-controls="collapse-${promptId}">
+                          ${prompt.name || prompt.id || 'Unnamed Prompt'}
+                        </button>
+                      </h2>
+                      <div id="collapse-${promptId}" class="accordion-collapse collapse" aria-labelledby="heading-${promptId}" data-bs-parent="#accordion-${categoryId}">
+                        <div class="accordion-body">
+                          <p><strong>ID:</strong> ${prompt.id}</p>
+                          <p><strong>Description:</strong> ${prompt.description || 'No description available'}</p>
+                          <div class="mt-3">
+                            <button class="btn btn-sm btn-outline-primary view-prompt-btn" data-prompt-id="${prompt.id}">View Full Template</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  `;
+                });
+                
+                html += `
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                `;
+              }
+              
+              html += '</div>';
+              container.innerHTML = html;
+              
+              // Add event listeners to view prompt buttons
+              document.querySelectorAll('.view-prompt-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                  const promptId = this.getAttribute('data-prompt-id');
+                  viewPromptTemplate(promptId);
+                });
+              });
+            } else {
+              container.innerHTML = `
+                <div class="alert alert-info">
+                  <p>No ${type} prompts found in the database.</p>
+                  <p class="mt-3">This could be because:</p>
+                  <ul>
+                    <li>There are no prompts of this type in the system</li>
+                    <li>The prompts don't follow the expected naming pattern</li>
+                    <li>The prompt categorization needs to be updated</li>
+                  </ul>
+                  <p class="mt-3">You can still manage all prompts using the backup and restore functionality.</p>
+                </div>
+              `;
+            }
+          } else {
+            container.innerHTML = `
+              <div class="alert alert-danger">
+                <p><strong>Error loading prompts:</strong> ${data.error || 'Unknown error'}</p>
+                <p class="mt-3">Suggestions:</p>
+                <ul>
+                  <li>Check that Redis is running and accessible</li>
+                  <li>Verify that prompt templates are stored with the expected key pattern</li>
+                  <li>Try restarting the web server</li>
+                </ul>
+              </div>
+            `;
+          }
+        })
+        .catch(error => {
+          console.error('Error loading prompts:', error);
+          container.innerHTML = `
+            <div class="alert alert-danger">
+              <p><strong>Error loading prompts:</strong> ${error.message || 'Network error'}</p>
+              <p class="mt-3">Suggestions:</p>
+              <ul>
+                <li>Check your network connection</li>
+                <li>Verify that the web server is running</li>
+                <li>Check the server logs for more details</li>
+              </ul>
+              <button class="btn btn-outline-primary mt-3" onclick="loadPromptsByType('${type}')">Try Again</button>
+            </div>
+          `;
+        });
+    }
+
+    // Helper function to view a prompt template
+    function viewPromptTemplate(promptId) {
+      console.log('Viewing prompt template:', promptId);
+      // Ensure the modal exists
+      if (!document.getElementById('promptTemplateModal')) {
+        createPromptTemplateModal();
+      }
+      
+      // Reset modal to view mode
+      document.getElementById('promptTemplateModalBody').style.display = 'block';
+      document.getElementById('promptEditForm').style.display = 'none';
+      document.getElementById('viewModeButtons').style.display = 'block';
+      document.getElementById('editModeButtons').style.display = 'none';
+      
+      // Show loading spinner
+      const modalBody = document.getElementById('promptTemplateModalBody');
+      const modalTitle = document.getElementById('promptTemplateModalLabel');
+      
+      modalTitle.textContent = 'Loading Prompt Template...';
+      modalBody.innerHTML = `
+        <div class="text-center py-5">
+          <i class="bi bi-arrow-repeat spin" style="font-size: 2rem;"></i>
+          <p class="mt-3">Loading prompt template...</p>
+        </div>
+      `;
+      
+      // Show the modal
+      const modal = new bootstrap.Modal(document.getElementById('promptTemplateModal'));
+      modal.show();
+      
+      // Fetch the prompt template
+      fetch(`/admin/prompts/view/${promptId}`)
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          if (data.success && data.prompt) {
+            const prompt = data.prompt;
+            modalTitle.textContent = prompt.name || promptId;
+            modalTitle.setAttribute('data-prompt-id', promptId);
+            
+            // Format the template with syntax highlighting if possible
+            let template = prompt.template || 'No template available';
+            // Escape HTML to prevent XSS
+            template = template.replace(/&/g, '&amp;')
+                              .replace(/</g, '&lt;')
+                              .replace(/>/g, '&gt;')
+                              .replace(/"/g, '&quot;')
+                              .replace(/'/g, '&#039;');
+            
+            modalBody.innerHTML = `
+              <div class="mb-3">
+                <h6>ID:</h6>
+                <p class="text-muted" id="viewPromptId">${prompt.id}</p>
+              </div>
+              <div class="mb-3">
+                <h6>Description:</h6>
+                <p id="viewPromptDescription">${prompt.description || 'No description available'}</p>
+              </div>
+              <div class="mb-3">
+                <h6>Category:</h6>
+                <p id="viewPromptCategory">${prompt.category || 'Uncategorized'}</p>
+              </div>
+              <hr>
+              <div>
+                <h6>Template:</h6>
+                <pre class="bg-light p-3 mt-2 overflow-auto" style="max-height: 300px;"><code id="viewPromptTemplate">${template}</code></pre>
+              </div>
+            `;
+          } else {
+            modalTitle.textContent = 'Error Loading Prompt';
+            modalBody.innerHTML = `
+              <div class="alert alert-danger">
+                <p><strong>Error loading prompt template:</strong> ${data.error || 'Unknown error'}</p>
+                <p class="mt-3">Prompt ID: ${promptId}</p>
+                <p>Please check that this prompt exists in the database.</p>
+              </div>
+            `;
+          }
+        })
+        .catch(error => {
+          console.error('Error loading prompt template:', error);
+          modalTitle.textContent = 'Error Loading Prompt';
+          modalBody.innerHTML = `
+            <div class="alert alert-danger">
+              <p><strong>Error loading prompt template:</strong> ${error.message || 'Network error'}</p>
+              <p class="mt-3">Prompt ID: ${promptId}</p>
+              <p class="mt-3">Suggestions:</p>
+              <ul>
+                <li>Check your network connection</li>
+                <li>Verify that the web server is running</li>
+                <li>Check that Redis is accessible</li>
+                <li>Try refreshing the page and trying again</li>
+              </ul>
+            </div>
+          `;
+        });
+    }
+
+    // Create prompt template modal if it doesn't exist
+    function createPromptTemplateModal() {
+      const modal = document.createElement('div');
+      modal.className = 'modal fade';
+      modal.id = 'promptTemplateModal';
+      modal.tabIndex = '-1';
+      modal.setAttribute('aria-labelledby', 'promptTemplateModalLabel');
+      modal.setAttribute('aria-hidden', 'true');
+      
+      modal.innerHTML = `
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title" id="promptTemplateModalLabel">Prompt Template</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <!-- View Mode -->
+              <div id="promptTemplateModalBody">
+                <!-- Prompt details will be inserted here -->
+              </div>
+              
+              <!-- Edit Mode (initially hidden) -->
+              <div id="promptEditForm" style="display: none;">
+                <form>
+                  <input type="hidden" id="editPromptId">
+                  <div class="mb-3">
+                    <label for="editPromptName" class="form-label">Name</label>
+                    <input type="text" class="form-control" id="editPromptName" required>
+                  </div>
+                  <div class="mb-3">
+                    <label for="editPromptDescription" class="form-label">Description</label>
+                    <textarea class="form-control" id="editPromptDescription" rows="2"></textarea>
+                  </div>
+                  <div class="mb-3">
+                    <label for="editPromptCategory" class="form-label">Category</label>
+                    <input type="text" class="form-control" id="editPromptCategory">
+                  </div>
+                  <div class="mb-3">
+                    <label for="editPromptTemplate" class="form-label">Template</label>
+                    <textarea class="form-control" id="editPromptTemplate" rows="12" required></textarea>
+                  </div>
+                </form>
+                <div id="editPromptStatus" class="mt-3"></div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <!-- View Mode Buttons -->
+              <div id="viewModeButtons">
+                <button type="button" class="btn btn-primary" id="editPromptBtn">Edit</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+              </div>
+              
+              <!-- Edit Mode Buttons (initially hidden) -->
+              <div id="editModeButtons" style="display: none;">
+                <button type="button" class="btn btn-secondary" id="cancelEditBtn">Cancel</button>
+                <button type="button" class="btn btn-primary" id="savePromptBtn">Save Changes</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      document.body.appendChild(modal);
+      return modal;
+    }
+    // Handle edit button click - Switch to edit mode in the same modal
+    document.addEventListener('click', function(event) {
+      if (event.target && event.target.id === 'editPromptBtn') {
+        console.log('Edit button clicked');
+        
+        // Get the current prompt data from the view section with IDs
+        const promptId = document.getElementById('viewPromptId').textContent;
+        const promptName = document.getElementById('promptTemplateModalLabel').textContent;
+        const promptDescription = document.getElementById('viewPromptDescription').textContent;
+        const promptCategory = document.getElementById('viewPromptCategory').textContent;
+        const promptTemplate = document.getElementById('viewPromptTemplate').textContent;
+        
+        console.log('Prompt data:', { promptId, promptName, promptDescription, promptCategory });
+        
+        // Fill the edit form with the current prompt data
+        document.getElementById('editPromptId').value = promptId;
+        document.getElementById('editPromptName').value = promptName;
+        document.getElementById('editPromptDescription').value = promptDescription === 'No description available' ? '' : promptDescription;
+        document.getElementById('editPromptCategory').value = promptCategory === 'Uncategorized' ? '' : promptCategory;
+        document.getElementById('editPromptTemplate').value = promptTemplate === 'No template available' ? '' : promptTemplate;
+        
+        // Switch to edit mode
+        document.getElementById('promptTemplateModalBody').style.display = 'none';
+        document.getElementById('promptEditForm').style.display = 'block';
+        document.getElementById('viewModeButtons').style.display = 'none';
+        document.getElementById('editModeButtons').style.display = 'block';
+      }
+    });
+    
+    // Handle cancel button click - Switch back to view mode
+    document.addEventListener('click', function(event) {
+      if (event.target && event.target.id === 'cancelEditBtn') {
+        // Switch back to view mode
+        document.getElementById('promptTemplateModalBody').style.display = 'block';
+        document.getElementById('promptEditForm').style.display = 'none';
+        document.getElementById('viewModeButtons').style.display = 'block';
+        document.getElementById('editModeButtons').style.display = 'none';
+        
+        // Clear any status messages
+        const statusDiv = document.getElementById('editPromptStatus');
+        if (statusDiv) statusDiv.innerHTML = '';
+        
+        // Clear any validation styling
+        const nameInput = document.getElementById('editPromptName');
+        const templateInput = document.getElementById('editPromptTemplate');
+        if (nameInput) nameInput.classList.remove('is-invalid');
+        if (templateInput) templateInput.classList.remove('is-invalid');
+      }
+    });
+    
+    // Handle save button click
+    document.addEventListener('click', function(event) {
+      if (event.target && event.target.id === 'savePromptBtn') {
+        // Basic form validation
+        const nameInput = document.getElementById('editPromptName');
+        const templateInput = document.getElementById('editPromptTemplate');
+        
+        if (!nameInput.value.trim() || !templateInput.value.trim()) {
+          if (!nameInput.value.trim()) nameInput.classList.add('is-invalid');
+          if (!templateInput.value.trim()) templateInput.classList.add('is-invalid');
+          return;
+        }
+        
+        // Get the form data
+        const promptId = document.getElementById('editPromptId').value;
+        const promptName = nameInput.value;
+        const promptDescription = document.getElementById('editPromptDescription').value;
+        const promptCategory = document.getElementById('editPromptCategory').value;
+        const promptTemplate = templateInput.value;
+        
+        // Show loading indicator
+        const statusDiv = document.getElementById('editPromptStatus');
+        statusDiv.innerHTML = `
+          <div class="alert alert-info">
+            <i class="bi bi-arrow-repeat spin me-2"></i>
+            Saving changes...
+          </div>
+        `;
+        
+        // Send the update request
+        fetch(`/admin/prompts/update/${promptId}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name: promptName,
+            description: promptDescription,
+            category: promptCategory,
+            template: promptTemplate
+          })
+        })
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(data => {
+          if (data.success) {
+            statusDiv.innerHTML = `
+              <div class="alert alert-success">
+                <i class="bi bi-check-circle me-2"></i>
+                Prompt template updated successfully!
+              </div>
+            `;
+            
+            // Update the prompt in the list if it's visible
+            const promptCard = document.querySelector(`[data-prompt-id="${promptId}"]`);
+            if (promptCard) {
+              const nameElement = promptCard.querySelector('.card-title');
+              const descElement = promptCard.querySelector('.card-text');
+              
+              if (nameElement) nameElement.textContent = promptName;
+              if (descElement) descElement.textContent = promptDescription;
+            }
+            
+            // Switch back to view mode after a short delay
+            setTimeout(() => {
+              // Close the current modal completely
+              const currentModal = bootstrap.Modal.getInstance(document.getElementById('promptTemplateModal'));
+              if (currentModal) {
+                currentModal.hide();
+                // Remove any lingering backdrop
+                const backdrop = document.querySelector('.modal-backdrop');
+                if (backdrop) backdrop.remove();
+                document.body.classList.remove('modal-open');
+                document.body.style.overflow = '';
+                document.body.style.paddingRight = '';
+              }
+              
+              // After a brief pause, refresh the view with updated data
+              setTimeout(() => {
+                viewPromptTemplate(promptId);
+              }, 300);
+            }, 1500);
+          } else {
+            statusDiv.innerHTML = `
+              <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle me-2"></i>
+                Error: ${data.error || 'Unknown error'}
+              </div>
+            `;
+          }
+        })
+        .catch(error => {
+          console.error('Error updating prompt:', error);
+          statusDiv.innerHTML = `
+            <div class="alert alert-danger">
+              <i class="bi bi-exclamation-triangle me-2"></i>
+              Error: ${error.message || 'Network error'}
+            </div>
+          `;
+        });
+      }
+    });
+  });
+</script>
+
+<style>
+  .spin {
+    animation: spinner 1s linear infinite;
+  }
+  @keyframes spinner {
+    to {transform: rotate(360deg);}
+  }
+</style>

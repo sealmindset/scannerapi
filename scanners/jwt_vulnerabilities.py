@@ -61,11 +61,11 @@ class Scanner(BaseScanner):
             self.logger.info("Debug mode enabled - simulating vulnerabilities")
         
         # Initialize endpoints with default values
-        self.login_endpoint = config.get("login_endpoint", "/users/v1/login")
-        self.refresh_token_endpoint = config.get("refresh_token_endpoint", "/users/v1/refresh")
-        self.user_info_endpoint = config.get("user_info_endpoint", "/users/v1/me")
-        self.debug_endpoint = config.get("debug_endpoint", "/users/v1/_debug")
-        self.register_endpoint = config.get("register_endpoint", "/users/v1/register")
+        self.login_endpoint = config.get("login_endpoint", "/auth/sign-in")
+        self.refresh_token_endpoint = config.get("refresh_token_endpoint", "/auth/refresh-tokens")
+        self.user_info_endpoint = config.get("user_info_endpoint", "/users/me")
+        self.debug_endpoint = config.get("debug_endpoint", "/auth/check")
+        self.register_endpoint = config.get("register_endpoint", "/auth/sign-up")
         
         # Ensure token_expiration_time is set (default to 30 days)
         self.token_expiration_time = config.get("token_expiration_time", 2592000)  # 30 days in seconds

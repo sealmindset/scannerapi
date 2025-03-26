@@ -29,10 +29,10 @@ class Scanner(BaseScanner):
         super().__init__(target, config)
         
         # Initialize endpoints with default values
-        self.debug_endpoint = config.get("debug_endpoint", "/users/v1/_debug")
-        self.register_endpoint = config.get("register_endpoint", "/users/v1/register")
-        self.login_endpoint = config.get("login_endpoint", "/users/v1/login")
-        self.password_change_endpoint = config.get("password_change_endpoint", "/users/v1/{username}/password")
+        self.debug_endpoint = config.get("debug_endpoint", "/auth/check")
+        self.register_endpoint = config.get("register_endpoint", "/auth/sign-up")
+        self.login_endpoint = config.get("login_endpoint", "/auth/sign-in")
+        self.password_change_endpoint = config.get("password_change_endpoint", "/users/me/password")
         
         # Track the source of each endpoint (fallback, openapi, config)
         self.endpoint_sources = {}

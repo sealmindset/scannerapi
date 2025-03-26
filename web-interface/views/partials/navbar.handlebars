@@ -1,0 +1,38 @@
+<nav class="navbar navbar-expand-lg navbar-light bg-light rounded">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="/">API Security Scanner</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarNav">
+      <ul class="navbar-nav">
+        <li class="nav-item">
+          <a class="nav-link {{#if (eq activeTab 'home')}}active{{/if}}" href="/">Home</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {{#if (eq activeTab 'scan')}}active{{/if}}" href="/scan">Scan Target</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {{#if (eq activeTab 'dashboard')}}active{{/if}}" href="/dashboard">
+            <i class="bi bi-speedometer2"></i> Dashboard
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {{#if (eq activeTab 'admin-prompts')}}active{{/if}}" href="/admin/prompts">
+            <i class="bi bi-gear"></i> LLM Prompts
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {{#if (eq activeTab 'mcp-demo')}}active{{/if}}" href="/mcp-demo">
+            <i class="bi bi-braces"></i> MCP Demo
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {{#if (eq activeTab 'mcp-admin')}}active{{/if}}" href="/admin/mcp">
+            <i class="bi bi-gear-wide-connected"></i> MCP Admin
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
+</nav>

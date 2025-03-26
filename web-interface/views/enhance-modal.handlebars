@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Enhancing Scan Results - {{scanId}}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    body {
+      background-color: #f8f9fa;
+      padding: 20px;
+    }
+    .card {
+      border-radius: 10px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .output-container {
+      max-height: 400px;
+      overflow-y: auto;
+      background-color: #f8f9fa;
+      border-radius: 5px;
+      padding: 10px;
+      font-family: monospace;
+      white-space: pre-wrap;
+      font-size: 0.9rem;
+    }
+    .status-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+    .llm-info {
+      background-color: #e9ecef;
+      border-radius: 5px;
+      padding: 10px;
+      margin-bottom: 15px;
+    }
+    .progress {
+      height: 20px;
+    }
+    .badge {
+      font-size: 0.9rem;
+    }
+    .error-text {
+      color: #dc3545;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="row">
+      <div class="col-lg-10 mx-auto">
+        <div class="card">
+          <div class="card-header bg-primary text-white">
+            <h4 class="mb-0">Enhancing Scan Results</h4>
+          </div>
+          <div class="card-body">
+            <!-- Status Information -->
+            <div class="status-header">
+              <h5>Scan ID: {{scanId}}</h5>
+              <span id="enhanceStatus" class="badge bg-primary">Starting...</span>
+            </div>
+
+            <!-- Previous Enhancement Info (if applicable) -->
+            {{#if wasEnhanced}}
+            <div class="alert alert-info mb-3">
+              <strong>Note:</strong> This scan was previously enhanced using {{previousProvider}}/{{previousModel}}. Re-enhancing will update the existing enhanced results.
+            </div>
+            {{/if}}
+
+            <!-- LLM Information -->
+            <div class="llm-info">
+              <div class="row">
+                <div class="col-md-6">
+                  <strong>LLM Provider:</strong> {{provider}}
+                </div>
+                <div class="col-md-6">
+                  <strong>Model:</strong> {{model}}
+                </div>
+              </div>
+              {{#if vulnCount}}
+              <div class="mt-2">
+                <strong>Vulnerabilities to enhance:</strong> {{vulnCount}}
+              </div>
+              {{/if}}
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="mb-3">
+              <label class="form-label" id="progressText">Starting enhancement process...</label>
+              <div class="progress">
+                <div id="enhanceProgress" class="progress-bar progress-bar-striped progress-bar-animated" 
+                     role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+              </div>
+            </div>
+
+            <!-- Output Log -->
+            <div class="mb-3">
+              <label class="form-label">Enhancement Log:</label>
+              <div id="enhanceOutput" class="output-container"></div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="d-flex justify-content-between">
+              <div>
+                <button id="stopEnhanceBtn" class="btn btn-danger">Stop Enhancement</button>
+              </div>
+              <div>
+                <a id="viewReportBtn" href="/results/{{scanId}}" class="btn btn-success" style="display: none;">View Enhanced Report</a>
+                <a href="/results/{{scanId}}" class="btn btn-secondary">Back to Results</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const socket = io();
+      let enhanceSessionId = "{{sessionId}}";
+      let enhanceInProgress = true;
+      
+      // Join the enhancement session
+      socket.emit('join-scan-session', enhanceSessionId);
+      
+      // Add initial message to output
+      const output = document.getElementById('enhanceOutput');
+      output.textContent += `Starting enhancement with {{provider}}/{{model}}...\n`;
+      
+      // Handle stop enhancement button
+      document.getElementById('stopEnhanceBtn').addEventListener('click', function() {
+        if (!enhanceSessionId) return;
+        
+        // Send stop request
+        socket.emit('scan-control', {
+          action: 'stop',
+          sessionId: enhanceSessionId
+        });
+        
+        // Update UI
+        document.getElementById('enhanceStatus').className = 'badge bg-warning';
+        document.getElementById('enhanceStatus').textContent = 'Stopping...';
+      });
+      
+      // Handle socket events
+      socket.on('scanner-output', function(data) {
+        if (data.type === 'enhance') {
+          const output = document.getElementById('enhanceOutput');
+          
+          // Add class for error messages
+          if (data.error) {
+            const errorSpan = document.createElement('span');
+            errorSpan.className = 'error-text';
+            errorSpan.textContent = data.data;
+            
+            // Append the error span
+            output.appendChild(errorSpan);
+            output.appendChild(document.createElement('br'));
+          } else {
+            output.textContent += data.data;
+          }
+          
+          // Auto-scroll to bottom
+          output.scrollTop = output.scrollHeight;
+        }
+      });
+      
+      // Handle process completion
+      socket.on('process-complete', function(data) {
+        if (data.type === 'enhance') {
+          enhanceInProgress = false;
+          
+          // Update status badge
+          const statusBadge = document.getElementById('enhanceStatus');
+          
+          if (data.success) {
+            statusBadge.className = 'badge bg-success';
+            statusBadge.textContent = 'Completed';
+            
+            // Show view report button
+            const viewReportBtn = document.getElementById('viewReportBtn');
+            viewReportBtn.style.display = 'inline-block';
+            
+            // Add completion message
+            const output = document.getElementById('enhanceOutput');
+            output.textContent += '\nEnhancement process completed successfully!\n';
+          } else {
+            statusBadge.className = 'badge bg-danger';
+            statusBadge.textContent = 'Failed';
+            
+            // Add error message
+            const output = document.getElementById('enhanceOutput');
+            const errorSpan = document.createElement('span');
+            errorSpan.className = 'error-text';
+            errorSpan.textContent = '\nEnhancement process failed!\n';
+            output.appendChild(errorSpan);
+          }
+          
+          // Hide stop button
+          document.getElementById('stopEnhanceBtn').style.display = 'none';
+        }
+      });
+      
+      // Handle enhancement progress updates
+      socket.on('enhancement-progress', function(data) {
+        // Update progress bar
+        const progressBar = document.getElementById('enhanceProgress');
+        progressBar.style.width = `${data.percentage}%`;
+        progressBar.setAttribute('aria-valuenow', data.percentage);
+        
+        // Update progress text
+        const progressText = document.getElementById('progressText');
+        progressText.textContent = `Processing vulnerability ${data.current} of ${data.total} (${data.percentage}%)`;
+      });
+      
+      socket.on('scanner-status', function(data) {
+        if (data.type === 'enhance') {
+          // Update status badge
+          const statusBadge = document.getElementById('enhanceStatus');
+          
+          if (data.success) {
+            statusBadge.className = 'badge bg-success';
+            statusBadge.textContent = 'Completed';
+          } else {
+            statusBadge.className = 'badge bg-danger';
+            statusBadge.textContent = 'Failed';
+            
+            // Add error message to output if not already there
+            const output = document.getElementById('enhanceOutput');
+            if (!output.textContent.includes(data.output)) {
+              const errorSpan = document.createElement('span');
+              errorSpan.className = 'error-text';
+              errorSpan.textContent = data.output + '\n';
+              output.appendChild(errorSpan);
+            }
+          }
+        }
+      });
+      
+      // Start the enhancement process automatically
+      fetch(`/api/results/{{scanId}}/enhance/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          provider: "{{provider}}",
+          model: "{{model}}",
+          sessionId: enhanceSessionId
+        })
+      })
+      .catch(error => {
+        console.error('Error starting enhancement:', error);
+        
+        // Update UI
+        document.getElementById('enhanceStatus').className = 'badge bg-danger';
+        document.getElementById('enhanceStatus').textContent = 'Failed';
+        
+        // Add error message to output
+        const output = document.getElementById('enhanceOutput');
+        output.textContent += `Error: ${error.message}\n`;
+        
+        enhanceInProgress = false;
+      });
+    });
+  </script>
+</body>
+</html>

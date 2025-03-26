@@ -1,0 +1,853 @@
+#!/usr/bin/env python3
+"""
+LLM Remediation Middleware
+
+This script enhances vulnerability remediation details in scan results using LLM APIs
+(OpenAI or Ollama) with Redis caching. It integrates with the existing vulnerability 
+report generation workflow.
+
+Usage:
+    python llm_remediation_middleware.py --input <scan_results.json> --output <enhanced_results.json>
+"""
+
+import argparse
+import hashlib
+import json
+import logging
+import os
+import sys
+import time
+import concurrent.futures
+from typing import Dict, List, Optional, Any, Union, Tuple
+
+import redis
+from dotenv import load_dotenv
+from langchain.prompts import PromptTemplate
+from utils.prompt_manager import get_prompt_template
+from langchain_community.llms import Ollama
+from langchain_openai import ChatOpenAI
+from pydantic import BaseModel, Field, field_validator
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("llm_remediation")
+
+# Load environment variables
+load_dotenv()
+
+
+class RemediationConfig(BaseModel):
+    """Configuration for the LLM remediation middleware."""
+
+    # LLM Provider Configuration
+    llm_provider: str = Field(
+        default="openai", description="LLM provider to use: 'openai' or 'ollama'"
+    )
+    openai_api_key: Optional[str] = Field(
+        default=None, description="OpenAI API key for authentication"
+    )
+    ollama_base_url: str = Field(
+        default="http://localhost:11434", description="Ollama API base URL"
+    )
+    ollama_model: str = Field(
+        default="llama3", description="Ollama model to use for generation"
+    )
+    
+    # Redis Configuration
+    redis_host: str = Field(default="localhost", description="Redis server host")
+    redis_port: int = Field(default=6379, description="Redis server port")
+    redis_db: int = Field(default=0, description="Redis database number")
+    redis_password: Optional[str] = Field(
+        default=None, description="Redis server password"
+    )
+    redis_cache_ttl: int = Field(
+        default=86400 * 7,  # 7 days
+        description="Time-to-live for cached remediation in seconds",
+    )
+    
+    # LLM Generation Configuration
+    temperature: float = Field(
+        default=0.2, description="Temperature for LLM generation (0.0 to 1.0)"
+    )
+    max_tokens: int = Field(
+        default=1000, description="Maximum tokens for LLM generation"
+    )
+    
+    # Batch Processing Configuration
+    batch_size: int = Field(
+        default=5, description="Number of vulnerabilities to process in parallel"
+    )
+    max_workers: int = Field(
+        default=3, description="Maximum number of worker threads for batch processing"
+    )
+    
+    @field_validator("llm_provider")
+    def validate_llm_provider(cls, v):
+        if v.lower() not in ["openai", "ollama"]:
+            raise ValueError("llm_provider must be either 'openai' or 'ollama'")
+        return v.lower()
+    
+    @field_validator("openai_api_key")
+    def validate_openai_api_key(cls, v, info):
+        values = info.data
+        if values.get("llm_provider") == "openai" and not v:
+            raise ValueError("openai_api_key is required when using OpenAI")
+        return v
+    
+    class Config:
+        env_prefix = "LLM_"
+        extra = "ignore"
+
+
+class VulnerabilityEvidence(BaseModel):
+    """Model for vulnerability evidence data."""
+    
+    request: Optional[Dict[str, Any]] = None
+    response: Optional[Dict[str, Any]] = None
+    normal_test: Optional[Dict[str, Any]] = None
+    aggressive_test: Optional[Dict[str, Any]] = None
+    optimal_rate: Optional[Dict[str, Any]] = None
+    example_request_response: Optional[Dict[str, Any]] = None
+    
+    class Config:
+        extra = "allow"
+
+
+class Vulnerability(BaseModel):
+    """Model for vulnerability data from scan results."""
+    
+    vulnerability: str = Field(..., description="Vulnerability name/title")
+    severity: str = Field(..., description="Severity level of the vulnerability")
+    endpoint: str = Field(..., description="Affected endpoint")
+    details: str = Field(..., description="Vulnerability details/description")
+    evidence: Optional[Union[Dict[str, Any], VulnerabilityEvidence]] = Field(
+        default={}, description="Evidence of the vulnerability"
+    )
+    remediation: Optional[str] = Field(
+        default="", description="Remediation steps for the vulnerability"
+    )
+    
+    class Config:
+        extra = "allow"
+
+
+class ScannerResults(BaseModel):
+    """Model for scanner results containing findings."""
+    
+    name: str = Field(..., description="Scanner name")
+    findings: List[Vulnerability] = Field(
+        default_factory=list, description="List of vulnerability findings"
+    )
+    
+    class Config:
+        extra = "allow"
+
+
+class ScanResults(BaseModel):
+    """Model for overall scan results."""
+    
+    scan_id: str = Field(..., description="Unique scan identifier")
+    target: str = Field(..., description="Target URL or system")
+    start_time: str = Field(..., description="Scan start time")
+    duration: float = Field(..., description="Scan duration in seconds")
+    scanners: List[ScannerResults] = Field(
+        default_factory=list, description="List of scanner results"
+    )
+    
+    class Config:
+        extra = "allow"
+
+
+class LLMRemediationMiddleware:
+    """
+    Middleware that enhances vulnerability remediation details using LLM APIs
+    with Redis caching.
+    """
+    
+    def __init__(self, config: RemediationConfig):
+        """
+        Initialize the middleware with the provided configuration.
+        
+        Args:
+            config: Configuration for the middleware
+        """
+        self.config = config
+        self._setup_redis()
+        self._setup_llm()
+        self._setup_prompt_template()
+        
+        # Statistics tracking
+        self.processed_count = 0
+        self.total_count = 0
+        self.success_count = 0
+        self.error_count = 0
+        self.skipped_count = 0
+        self.start_time = None
+    
+    def _setup_redis(self):
+        """Set up Redis connection for caching."""
+        try:
+            self.redis_client = redis.Redis(
+                host=self.config.redis_host,
+                port=self.config.redis_port,
+                db=self.config.redis_db,
+                password=self.config.redis_password,
+                decode_responses=True,
+            )
+            # Test connection
+            self.redis_client.ping()
+            logger.info(
+                f"Connected to Redis at {self.config.redis_host}:{self.config.redis_port}"
+            )
+        except redis.ConnectionError as e:
+            logger.warning(f"Failed to connect to Redis: {e}")
+            logger.warning("Proceeding without caching")
+            self.redis_client = None
+    
+    def _setup_llm(self):
+        """Set up LLM client based on the configured provider."""
+        if self.config.llm_provider == "openai":
+            # Check if OpenAI API key is available
+            openai_api_key = self.config.openai_api_key or os.environ.get("OPENAI_API_KEY")
+            
+            if not openai_api_key:
+                logger.error("OpenAI API key is not provided. Please set it in the .env file or pass it as an argument.")
+                sys.exit(1)
+                
+            # Set OpenAI API key
+            os.environ["OPENAI_API_KEY"] = openai_api_key
+            
+            try:
+                # Use ChatOpenAI instead of the deprecated OpenAI class
+                self.llm = ChatOpenAI(
+                    temperature=self.config.temperature,
+                    max_tokens=self.config.max_tokens,
+                    model="gpt-4",  # Using GPT-4 for better remediation quality
+                )
+                logger.info("Using OpenAI API for remediation generation")
+            except Exception as e:
+                logger.error(f"Failed to initialize OpenAI: {e}")
+                sys.exit(1)
+        else:  # ollama
+            try:
+                self.llm = Ollama(
+                    base_url=self.config.ollama_base_url,
+                    model=self.config.ollama_model,
+                    temperature=self.config.temperature,
+                )
+                logger.info(f"Using Ollama API with model {self.config.ollama_model}")
+            except Exception as e:
+                logger.error(f"Failed to initialize Ollama: {e}")
+                sys.exit(1)
+    
+    def _setup_prompt_template(self):
+        """Set up the prompt template for remediation generation."""
+        template = """
+You are a cybersecurity expert specializing in API security. Your task is to provide detailed remediation steps for a vulnerability.
+
+Vulnerability: {vulnerability}
+Severity: {severity}
+Endpoint: {endpoint}
+Details: {details}
+API Structure: {api_structure}
+
+Based on the information above, provide comprehensive, actionable remediation steps to fix this vulnerability.
+Include:
+1. Root cause analysis
+2. Step-by-step technical instructions for fixing the issue, tailored to the specific API structure
+3. Code examples where applicable
+4. Best practices to prevent similar issues in the future
+5. References to relevant security standards or guidelines
+
+Your response should be technical, precise, and directly applicable to the vulnerability described.
+
+Remediation:
+"""
+        
+        self.prompt_template = PromptTemplate(
+            input_variables=["vulnerability", "severity", "endpoint", "details", "api_structure"],
+            template=template,
+        )
+    
+    def _detect_api_structure(self, endpoint: str) -> str:
+        """
+        Detect the API structure based on the endpoint pattern.
+        
+        Args:
+            endpoint: The API endpoint to analyze
+            
+        Returns:
+            The detected API structure name
+        """
+        if not endpoint:
+            return "standard"
+        
+        # Normalize the endpoint for consistent pattern matching
+        normalized_endpoint = endpoint.strip().lower()
+        if normalized_endpoint.startswith('/'):
+            normalized_endpoint = normalized_endpoint[1:]
+        
+        # Check for Snorefox API structure
+        if any(pattern in normalized_endpoint for pattern in [
+            "auth/sign-up", "auth/sign-in", "auth/sign-out", 
+            "users/me", "auth/check", "auth/refresh"
+        ]):
+            return "snorefox"
+        
+        # Check for standard RESTful API patterns
+        if any(pattern in normalized_endpoint for pattern in [
+            "api/users", "api/login", "api/register", 
+            "api/auth", "api/v1/users", "api/v2/users"
+        ]):
+            return "standard_rest"
+        
+        # Check for GraphQL API pattern
+        if "graphql" in normalized_endpoint or "gql" in normalized_endpoint:
+            return "graphql"
+        
+        # Default to standard API structure
+        return "standard"
+    
+    def _get_api_structure_description(self, structure_name: str) -> str:
+        """
+        Get a description of the API structure.
+        
+        Args:
+            structure_name: Name of the API structure
+            
+        Returns:
+            Description of the API structure
+        """
+        if structure_name == "snorefox":
+            return (
+                "This API follows the Snorefox RESTful pattern with authentication endpoints under the `/auth` path. "
+                "Registration endpoint is at `/auth/sign-up` instead of the more common `/users` or `/register`. "
+                "Login endpoint is at `/auth/sign-in` instead of `/login`. "
+                "User-specific endpoints are under `/users/me` with bearer token authentication. "
+                "The API uses different field names than standard API conventions. "
+                "Authentication is handled via JWT tokens with bearer authentication."
+            )
+        elif structure_name == "standard_rest":
+            return (
+                "This API follows a standard RESTful pattern with common endpoint naming conventions. "
+                "User registration is typically at `/api/users` or `/api/register`. "
+                "Authentication is typically at `/api/login` or `/api/auth`. "
+                "Resources are organized in a hierarchical structure following RESTful principles."
+            )
+        elif structure_name == "graphql":
+            return (
+                "This API follows a GraphQL pattern with a single endpoint that accepts query and mutation operations. "
+                "Authentication is typically handled via HTTP headers rather than specific endpoints. "
+                "Vulnerabilities in GraphQL APIs often relate to introspection, query depth, and authorization checks."
+            )
+        
+        # Default description
+        return "This API follows a standard pattern with common endpoint naming conventions. Specific structural details are not available."
+    
+    def _generate_cache_key(self, vulnerability: Dict[str, Any]) -> str:
+        """
+        Generate a unique cache key for a vulnerability.
+        
+        Args:
+            vulnerability: Vulnerability data as dictionary
+            
+        Returns:
+            Unique cache key as a string
+        """
+        # Create a string representation of key vulnerability attributes
+        vuln_name = vulnerability.get("vulnerability", "")
+        severity = vulnerability.get("severity", "")
+        endpoint = vulnerability.get("endpoint", "")
+        details = vulnerability.get("details", "")
+        
+        # Include API structure in the cache key for more specific remediation
+        api_structure = self._detect_api_structure(endpoint)
+        
+        key_data = f"{vuln_name}|{severity}|{endpoint}|{details}|{api_structure}"
+        # Generate a hash of the key data
+        return f"remediation:{hashlib.md5(key_data.encode()).hexdigest()}"
+    
+    def _get_cached_remediation(self, cache_key: str) -> Optional[str]:
+        """
+        Get cached remediation from Redis if available.
+        
+        Args:
+            cache_key: Cache key for the remediation
+            
+        Returns:
+            Cached remediation or None if not found
+        """
+        if not self.redis_client:
+            return None
+        
+        try:
+            cached = self.redis_client.get(cache_key)
+            if cached:
+                logger.info(f"Cache hit for {cache_key}")
+                return cached
+            logger.info(f"Cache miss for {cache_key}")
+            return None
+        except Exception as e:
+            logger.warning(f"Error retrieving from cache: {e}")
+            return None
+    
+    def _cache_remediation(self, cache_key: str, remediation: str) -> bool:
+        """
+        Cache remediation in Redis.
+        
+        Args:
+            cache_key: Cache key for the remediation
+            remediation: Remediation text to cache
+            
+        Returns:
+            True if caching was successful, False otherwise
+        """
+        if not self.redis_client:
+            return False
+        
+        try:
+            self.redis_client.setex(
+                cache_key, self.config.redis_cache_ttl, remediation
+            )
+            logger.info(f"Cached remediation for {cache_key}")
+            return True
+        except Exception as e:
+            logger.warning(f"Error caching remediation: {e}")
+            return False
+            
+    def _log_progress(self) -> None:
+        """
+        Log progress of processing vulnerabilities.
+        """
+        if self.total_count == 0:
+            return
+            
+        percent_complete = (self.processed_count / self.total_count) * 100
+        elapsed_time = time.time() - self.start_time
+        
+        # Only log at specific intervals to avoid log spam
+        if (percent_complete % 10 < 1 or self.processed_count % 5 == 0) and self.processed_count > 0:
+            remaining = 0
+            if self.processed_count > 0:
+                items_per_second = self.processed_count / elapsed_time if elapsed_time > 0 else 0
+                remaining = (self.total_count - self.processed_count) / items_per_second if items_per_second > 0 else 0
+                
+            logger.info(f"Progress: {self.processed_count}/{self.total_count} ({percent_complete:.1f}%) - "
+                       f"Elapsed: {elapsed_time:.1f}s, Estimated remaining: {remaining:.1f}s")
+    
+    def generate_remediation(self, vulnerability: Dict[str, Any]) -> str:
+        """
+        Generate remediation for a vulnerability using LLM with caching.
+        
+        Args:
+            vulnerability: Vulnerability data as dictionary
+            
+        Returns:
+            Generated remediation text
+        """
+        # Skip if the vulnerability doesn't have required fields
+        required_fields = ["vulnerability", "severity", "endpoint", "details"]
+        if not all(field in vulnerability for field in required_fields):
+            logger.warning(f"Skipping vulnerability with missing required fields: {vulnerability.get('vulnerability', 'Unknown')}")
+            return vulnerability.get("remediation", "")
+        
+        # Generate cache key
+        cache_key = self._generate_cache_key(vulnerability)
+        
+        # Check cache first
+        cached_remediation = self._get_cached_remediation(cache_key)
+        if cached_remediation:
+            return cached_remediation
+        
+        # Generate remediation using LLM with retry mechanism
+        max_retries = 3
+        retry_delay = 2  # seconds
+        
+        for attempt in range(max_retries):
+            try:
+                vuln_name = vulnerability.get("vulnerability", "Unknown vulnerability")
+                logger.info(f"Generating remediation for {vuln_name} (attempt {attempt + 1}/{max_retries})")
+                
+                # Detect API structure
+                endpoint = vulnerability.get("endpoint", "")
+                api_structure_name = self._detect_api_structure(endpoint)
+                api_structure_desc = self._get_api_structure_description(api_structure_name)
+                
+                # Prepare input for the prompt template
+                input_data = {
+                    "vulnerability": vulnerability.get("vulnerability", ""),
+                    "severity": vulnerability.get("severity", ""),
+                    "endpoint": endpoint,
+                    "details": vulnerability.get("details", ""),
+                    "api_structure": api_structure_desc,
+                }
+                
+                # Format the prompt
+                prompt = self.prompt_template.format(**input_data)
+                
+                # Generate remediation using the LLM directly
+                result = self.llm.invoke(prompt).content
+                
+                # Cache the result
+                self._cache_remediation(cache_key, result)
+                
+                # Track progress
+                self.processed_count += 1
+                if self.processed_count % 5 == 0:
+                    logger.info(f"Processed {self.processed_count} vulnerabilities so far")
+                
+                return result
+            except Exception as e:
+                logger.error(f"Error generating remediation (attempt {attempt + 1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    # Exponential backoff
+                    retry_delay *= 2
+                else:
+                    logger.error(f"Failed to generate remediation after {max_retries} attempts")
+                    return vulnerability.get("remediation", "Error generating remediation after multiple attempts. Please check the logs for details.")
+    
+    def _process_finding(self, finding: Dict[str, Any]) -> Tuple[Dict[str, Any], bool, bool]:
+        """
+        Process a single finding and generate remediation.
+        
+        Args:
+            finding: The vulnerability finding to process
+            
+        Returns:
+            Tuple of (updated finding, success flag, skipped flag)
+        """
+        # Skip if remediation is already substantial
+        existing_remediation = finding.get("remediation", "")
+        if existing_remediation and len(existing_remediation) > 200:
+            logger.info(
+                f"Skipping {finding.get('vulnerability', 'unknown')} - already has substantial remediation"
+            )
+            return finding, False, True
+        
+        # Generate enhanced remediation
+        try:
+            enhanced_remediation = self.generate_remediation(finding)
+            
+            # Update the finding with enhanced remediation
+            if enhanced_remediation:
+                finding["remediation"] = enhanced_remediation
+                return finding, True, False
+            return finding, False, False
+        except Exception as e:
+            logger.error(f"Error processing finding {finding.get('vulnerability', 'unknown')}: {e}")
+            return finding, False, False
+    
+    def _process_batch(self, findings: List[Dict[str, Any]]) -> List[Tuple[Dict[str, Any], bool, bool]]:
+        """
+        Process a batch of findings in parallel.
+        
+        Args:
+            findings: List of findings to process
+            
+        Returns:
+            List of processed findings with success and skipped flags
+        """
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.config.max_workers) as executor:
+            # Submit all findings to the executor
+            future_to_finding = {executor.submit(self._process_finding, finding): finding for finding in findings}
+            
+            # Process results as they complete
+            results = []
+            for future in concurrent.futures.as_completed(future_to_finding):
+                finding = future_to_finding[future]
+                try:
+                    result = future.result()
+                    results.append(result)
+                    
+                    # Update counters and log progress
+                    self.processed_count += 1
+                    if result[1]:  # Success flag
+                        self.success_count += 1
+                    if result[2]:  # Skipped flag
+                        self.skipped_count += 1
+                    else:
+                        if not result[1]:
+                            self.error_count += 1
+                    
+                    self._log_progress()
+                except Exception as e:
+                    logger.error(f"Exception processing finding {finding.get('vulnerability', 'unknown')}: {e}")
+                    self.processed_count += 1
+                    self.error_count += 1
+                    self._log_progress()
+                    results.append((finding, False, False))
+            
+            return results
+    
+    def _group_vulnerabilities_by_api_structure(self, findings: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Group vulnerabilities by their API structure for more consistent remediation.
+        
+        Args:
+            findings: List of vulnerability findings
+            
+        Returns:
+            Dictionary mapping API structure names to lists of vulnerabilities
+        """
+        grouped = {}
+        
+        for finding in findings:
+            endpoint = finding.get("endpoint", "")
+            api_structure = self._detect_api_structure(endpoint)
+            
+            if api_structure not in grouped:
+                grouped[api_structure] = []
+                
+            grouped[api_structure].append(finding)
+            
+        return grouped
+    
+    def process_scan_results(self, scan_results: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Process scan results to enhance remediation details using batch processing.
+        
+        Args:
+            scan_results: Scan results to process as dictionary
+            
+        Returns:
+            Processed scan results with enhanced remediation details
+        """
+        scan_id = scan_results.get("scan_id", "unknown")
+        logger.info(f"Processing scan results for scan ID: {scan_id}")
+        
+        # Reset statistics and start timer
+        self.processed_count = 0
+        self.total_count = 0
+        self.success_count = 0
+        self.error_count = 0
+        self.skipped_count = 0
+        self.start_time = time.time()
+        
+        # Collect all findings for batch processing
+        all_findings = []
+        finding_map = {}  # Maps finding to its location in the scan_results
+        
+        for scanner_idx, scanner in enumerate(scan_results.get("scanners", [])):
+            scanner_name = scanner.get("name", "unknown")
+            findings = scanner.get("findings", [])
+            
+            if not findings:
+                logger.info(f"No findings for scanner: {scanner_name}")
+                continue
+                
+            logger.info(f"Collecting findings from scanner: {scanner_name}")
+            
+            for finding_idx, finding in enumerate(findings):
+                all_findings.append(finding)
+                finding_map[id(finding)] = (scanner_idx, finding_idx)
+        
+        self.total_count = len(all_findings)
+        logger.info(f"Found {self.total_count} total vulnerabilities to process")
+        
+        if self.total_count == 0:
+            logger.info("No vulnerabilities to process")
+            return scan_results
+        
+        # Group findings by API structure for more consistent remediation
+        grouped_findings = self._group_vulnerabilities_by_api_structure(all_findings)
+        
+        # Process each group separately
+        for api_structure, findings_group in grouped_findings.items():
+            group_size = len(findings_group)
+            logger.info(f"Processing {group_size} vulnerabilities for API structure: {api_structure}")
+            
+            # Process findings in batches
+            batch_size = min(self.config.batch_size, group_size)
+            
+            for i in range(0, group_size, batch_size):
+                batch = findings_group[i:i+batch_size]
+                logger.info(f"Processing batch {i//batch_size + 1}/{(group_size + batch_size - 1)//batch_size} for {api_structure} API structure")
+                
+                # Process the batch
+                processed_batch = self._process_batch(batch)
+                
+                # Update the original findings in scan_results
+                for processed_finding, _, _ in processed_batch:
+                    if id(processed_finding) in finding_map:
+                        scanner_idx, finding_idx = finding_map[id(processed_finding)]
+                        scan_results["scanners"][scanner_idx]["findings"][finding_idx] = processed_finding
+        
+        # Final progress report
+        elapsed_time = time.time() - self.start_time
+        logger.info(f"Enhanced {self.success_count} out of {self.total_count} vulnerabilities in {elapsed_time:.2f} seconds")
+        logger.info(f"Success: {self.success_count}, Errors: {self.error_count}, Skipped: {self.skipped_count}")
+        
+        return scan_results
+
+
+def load_scan_results(file_path: str) -> Dict[str, Any]:
+    """
+    Load scan results from a JSON file.
+    
+    Args:
+        file_path: Path to the JSON file
+        
+    Returns:
+        Parsed scan results as a dictionary
+    """
+    try:
+        with open(file_path, "r") as f:
+            data = json.load(f)
+        
+        # Return the raw dictionary instead of validating with Pydantic
+        # This avoids validation errors with different scanner result formats
+        return data
+    except Exception as e:
+        logger.error(f"Error loading scan results: {e}")
+        sys.exit(1)
+
+
+def save_scan_results(scan_results: Dict[str, Any], file_path: str) -> None:
+    """
+    Save scan results to a JSON file.
+    
+    Args:
+        scan_results: Scan results to save
+        file_path: Path to the output JSON file
+    """
+    try:
+        # Save the dictionary as JSON
+        with open(file_path, "w") as f:
+            json.dump(scan_results, f, indent=2)
+        
+        logger.info(f"Saved enhanced scan results to {file_path}")
+    except Exception as e:
+        logger.error(f"Error saving scan results: {e}")
+        sys.exit(1)
+
+
+def parse_args():
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description="LLM Remediation Middleware for Vulnerability Reports"
+    )
+    parser.add_argument(
+        "--input", required=True, help="Path to input scan results JSON file"
+    )
+    parser.add_argument(
+        "--output", required=True, help="Path to output enhanced scan results JSON file"
+    )
+    parser.add_argument(
+        "--config", help="Path to configuration JSON file (optional)"
+    )
+    parser.add_argument(
+        "--llm-provider",
+        choices=["openai", "ollama"],
+        help="LLM provider to use (default: from env or config)",
+    )
+    parser.add_argument(
+        "--openai-api-key",
+        help="OpenAI API key (overrides environment variable)",
+    )
+    parser.add_argument(
+        "--batch-size", type=int,
+        help="Number of vulnerabilities to process in parallel"
+    )
+    parser.add_argument(
+        "--max-workers", type=int,
+        help="Maximum number of worker threads for batch processing"
+    )
+    return parser.parse_args()
+
+
+def load_config(config_path: Optional[str] = None) -> RemediationConfig:
+    """
+    Load configuration from environment variables and optional config file.
+    
+    Args:
+        config_path: Optional path to configuration JSON file
+        
+    Returns:
+        Parsed configuration
+    """
+    # Start with environment variables
+    config_data = {}
+    
+    # Check for OpenAI API key in environment
+    openai_api_key = os.environ.get("OPENAI_API_KEY")
+    if openai_api_key:
+        config_data["openai_api_key"] = openai_api_key
+    
+    # Load from config file if provided
+    if config_path:
+        try:
+            with open(config_path, "r") as f:
+                file_config = json.load(f)
+            config_data.update(file_config)
+        except Exception as e:
+            logger.error(f"Error loading config file: {e}")
+            sys.exit(1)
+    
+    # Override with command-line arguments
+    args = parse_args()
+    if args.llm_provider:
+        config_data["llm_provider"] = args.llm_provider
+    if args.batch_size:
+        config_data["batch_size"] = args.batch_size
+    if args.max_workers:
+        config_data["max_workers"] = args.max_workers
+    
+    # Create and validate config
+    try:
+        return RemediationConfig(**config_data)
+    except Exception as e:
+        logger.error(f"Error in configuration: {e}")
+        sys.exit(1)
+
+
+def main():
+    """Main entry point for the script."""
+    # Parse arguments
+    args = parse_args()
+    
+    # Load configuration
+    config = load_config(args.config)
+    
+    # Override with command-line arguments
+    if args.openai_api_key:
+        config.openai_api_key = args.openai_api_key
+    
+    # Load scan results
+    try:
+        scan_results = load_scan_results(args.input)
+    except Exception as e:
+        logger.error(f"Failed to load scan results: {e}")
+        sys.exit(1)
+    
+    # Initialize middleware
+    try:
+        middleware = LLMRemediationMiddleware(config)
+    except Exception as e:
+        logger.error(f"Failed to initialize middleware: {e}")
+        sys.exit(1)
+    
+    # Process scan results
+    try:
+        enhanced_results = middleware.process_scan_results(scan_results)
+    except Exception as e:
+        logger.error(f"Failed to process scan results: {e}")
+        sys.exit(1)
+    
+    # Save enhanced results
+    try:
+        save_scan_results(enhanced_results, args.output)
+    except Exception as e:
+        logger.error(f"Failed to save enhanced results: {e}")
+        sys.exit(1)
+    
+    logger.info("Remediation enhancement completed successfully")
+
+
+if __name__ == "__main__":
+    main()

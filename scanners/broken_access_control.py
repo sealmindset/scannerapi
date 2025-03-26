@@ -11,7 +11,10 @@ import time
 import random
 import string
 import base64
+import uuid
 from typing import Dict, List, Any, Optional, Tuple
+
+import requests
 
 from core.base_scanner import BaseScanner
 from core.openapi import find_endpoint_by_purpose
@@ -32,11 +35,11 @@ class Scanner(BaseScanner):
         super().__init__(target, config)
         
         # Initialize endpoints with default values
-        self.debug_endpoint = config.get("debug_endpoint", "/users/v1/_debug")
-        self.register_endpoint = config.get("register_endpoint", "/users/v1/register")
-        self.login_endpoint = config.get("login_endpoint", "/users/v1/login")
+        self.debug_endpoint = config.get("debug_endpoint", "/auth/check")
+        self.register_endpoint = config.get("register_endpoint", "/auth/sign-up")
+        self.login_endpoint = config.get("login_endpoint", "/auth/sign-in")
         self.admin_endpoint = config.get("admin_endpoint", "/admin")
-        self.user_endpoint = config.get("user_endpoint", "/users/{username}")
+        self.user_endpoint = config.get("user_endpoint", "/users/me")
         
         # Extract endpoints from OpenAPI spec if available
         self._extract_endpoints_from_openapi(target)
@@ -123,6 +126,127 @@ class Scanner(BaseScanner):
                 self.logger.info(f"Found admin endpoint: {self.admin_endpoint}")
                 break
     
+    def _get_full_url(self, endpoint: str) -> str:
+        """
+        Get the full URL for an endpoint.
+        
+        Args:
+            endpoint: The endpoint path
+            
+        Returns:
+            The full URL
+        """
+        base_url = self.base_url.rstrip('/')
+        endpoint = endpoint.lstrip('/')
+        return f"{base_url}/{endpoint}"
+        
+    def _simulate_response(self, method: str, endpoint: str, data: Any = None, json_data: Any = None, params: Dict = None) -> requests.Response:
+        """
+        Simulate a response for testing purposes when the target server is not available.
+        This method is called by the base scanner when simulate_server is True.
+        
+        Args:
+            method: HTTP method (GET, POST, PUT, DELETE, etc.)
+            endpoint: API endpoint
+            data: Request data
+            json_data: JSON request data
+            params: Query parameters
+            
+        Returns:
+            Simulated Response object
+        """
+        self.logger.info(f"Simulating {method} request to {endpoint}")
+        
+        # Create a mock response object
+        response = requests.Response()
+        response.status_code = 200
+        response._content = b"{}"
+        response.encoding = 'utf-8'
+        response.url = self._get_full_url(endpoint)
+        response.request = requests.Request(method=method, url=response.url).prepare()
+        
+        # Simulate different responses based on the endpoint and method
+        if endpoint == self.debug_endpoint and method == "GET":
+            # Simulate debug endpoint with user accounts
+            users = [
+                {"username": "user1", "email": "user1@example.com", "admin": False},
+                {"username": "user2", "email": "user2@example.com", "admin": False},
+                {"username": "admin", "email": "admin@example.com", "admin": True}
+            ]
+            response._content = json.dumps({"users": users}).encode('utf-8')
+            
+        elif endpoint == self.register_endpoint and method == "POST":
+            # Simulate user registration
+            if json_data:
+                username = json_data.get(self.username_field)
+                email = json_data.get(self.email_field)
+                admin_requested = json_data.get(self.admin_field, False)
+                
+                # If admin registration is attempted, simulate failure unless vulnerabilities are simulated
+                if admin_requested and not self.simulate_vulnerabilities:
+                    response.status_code = 403
+                    response._content = json.dumps({"error": "Admin registration not allowed"}).encode('utf-8')
+                else:
+                    response._content = json.dumps({
+                        "id": str(uuid.uuid4()),
+                        self.username_field: username,
+                        self.email_field: email,
+                        self.admin_field: admin_requested and self.simulate_vulnerabilities
+                    }).encode('utf-8')
+            
+        elif endpoint == self.login_endpoint and method == "POST":
+            # Simulate login
+            if json_data:
+                username = json_data.get(self.username_field)
+                password = json_data.get(self.password_field)
+                
+                # Simulate successful login
+                token = f"simulated.jwt.token.{username}.{int(time.time())}"
+                response._content = json.dumps({self.auth_token_field: token}).encode('utf-8')
+        
+        elif endpoint == self.admin_endpoint and method == "GET":
+            # Simulate admin endpoint access
+            # If vulnerabilities are simulated, allow access; otherwise, check auth
+            if self.simulate_vulnerabilities:
+                response._content = json.dumps({"admin_data": "Sensitive admin information"}).encode('utf-8')
+            else:
+                # Check if request has admin token (would be in Authorization header)
+                auth_header = self.session.headers.get("Authorization", "")
+                if "admin" in auth_header.lower():
+                    response._content = json.dumps({"admin_data": "Sensitive admin information"}).encode('utf-8')
+                else:
+                    response.status_code = 403
+                    response._content = json.dumps({"error": "Access denied"}).encode('utf-8')
+        
+        elif self.user_endpoint in endpoint and method == "GET":
+            # Simulate user data access
+            # Extract username from endpoint (e.g., /users/{username})
+            path_parts = endpoint.split('/')
+            target_username = path_parts[-1] if path_parts else ""
+            
+            # Get the current user from auth header
+            auth_header = self.session.headers.get("Authorization", "")
+            current_user = ""
+            if auth_header:
+                # Extract username from token (simplified)
+                token_parts = auth_header.split('.')
+                if len(token_parts) > 2:
+                    current_user = token_parts[2]
+            
+            # If vulnerabilities are simulated or it's the same user, allow access
+            if self.simulate_vulnerabilities or current_user == target_username:
+                response._content = json.dumps({
+                    "id": str(uuid.uuid4()),
+                    "username": target_username,
+                    "email": f"{target_username}@example.com",
+                    "profile": {"bio": "User profile information"}
+                }).encode('utf-8')
+            else:
+                response.status_code = 403
+                response._content = json.dumps({"error": "Access denied"}).encode('utf-8')
+        
+        return response
+    
     def run(self) -> List[Dict[str, Any]]:
         """
         Run the scanner.
@@ -159,6 +283,7 @@ class Scanner(BaseScanner):
         """
         self.logger.info(f"Retrieving existing accounts from {self.debug_endpoint}")
         
+        # Only make real requests in production environments
         try:
             response = self._make_request(
                 method="GET",
@@ -187,6 +312,7 @@ class Scanner(BaseScanner):
                 return []
         except Exception as e:
             self.logger.error(f"Error accessing debug endpoint: {str(e)}")
+            # Return empty list if there's an error
             return []
     
     def _register_user(self, username: str, email: str, password: str, admin: bool = False) -> Tuple[bool, Optional[Dict[str, Any]]]:
@@ -215,6 +341,7 @@ class Scanner(BaseScanner):
         
         self.logger.info(f"Registering user '{username}' with admin={admin}")
         
+        # Prepare the payload with Snorefox API compatible field names
         payload = {
             self.username_field: username,
             self.email_field: email,
@@ -224,7 +351,11 @@ class Scanner(BaseScanner):
         if admin:
             payload[self.admin_field] = True
         
+        # Add additional fields from config
+        payload.update(self.additional_fields)
+        
         try:
+            # Make the actual registration request
             response = self._make_request(
                 method="POST",
                 endpoint=self.register_endpoint,
@@ -242,7 +373,18 @@ class Scanner(BaseScanner):
                         "password": password,
                         "endpoint": self.register_endpoint,
                         "created_by": "broken_access_control_scanner",
-                        "response_code": response.status_code
+                        "response_code": response.status_code,
+                        "request": {
+                            "method": "POST",
+                            "url": self._get_full_url(self.register_endpoint),
+                            "headers": dict(response.request.headers),
+                            "body": payload
+                        },
+                        "response": {
+                            "status_code": response.status_code,
+                            "headers": dict(response.headers),
+                            "body": response.text[:500] if len(response.text) > 500 else response.text
+                        }
                     }
                     account_cache.add_account(account_data)
                 

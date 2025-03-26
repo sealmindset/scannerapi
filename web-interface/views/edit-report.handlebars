@@ -1,0 +1,1183 @@
+{{#if error}}
+<div class="alert alert-danger">{{error}}</div>
+{{/if}}
+
+<div class="container mt-4">
+  <!-- Debug info -->
+  <div class="alert alert-info mb-3">
+    <h5>Debug Information</h5>
+    <p>Scan ID: {{scanId}}</p>
+    <p>Vulnerability Count: {{vulnerabilities.length}}</p>
+    <p>Has Metadata: {{debug.hasMetadata}}</p>
+    <p>Report Path: {{debug.reportPath}}</p>
+    <p>Title: {{scanTitle}}</p>
+    <p>Description: {{scanDescription}}</p>
+    <h6>Vulnerabilities:</h6>
+    <ul>
+      {{#each vulnerabilities}}
+        <li>{{id}}: {{name}} - <span class="badge bg-{{#if (eq severity 'CRITICAL')}}danger{{else if (eq severity 'HIGH')}}warning{{else if (eq severity 'MEDIUM')}}info{{else}}secondary{{/if}}">{{severity}}</span> (URL: <a href="{{url}}" target="_blank">{{url}}</a>)</li>
+      {{/each}}
+    </ul>
+    <pre id="debug-info" style="max-height: 100px; overflow-y: auto;"></pre>
+  </div>
+
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Edit Report: {{scanTitle}}</h1>
+    <div>
+      <button id="saveReportBtn" class="btn btn-primary">Save Changes</button>
+      <a href="/results/{{scanId}}" class="btn btn-secondary ms-2">View Report</a>
+    </div>
+  </div>
+  
+  <!-- Custom Find and Replace Tool -->
+  <!-- Custom Find and Replace Tool -->
+  <div id="findReplaceCard" class="card mb-4 d-none">
+    <div class="card-header bg-light">
+      <h5 class="mb-0">Find and Replace Tool</h5>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-5">
+          <label for="findText" class="form-label">Find</label>
+          <input type="text" class="form-control" id="findText" placeholder="Text to find">
+        </div>
+        <div class="col-md-5">
+          <label for="replaceText" class="form-label">Replace with</label>
+          <input type="text" class="form-control" id="replaceText" placeholder="Replacement text">
+        </div>
+        <div class="col-md-2 d-flex align-items-end gap-2">
+          <button id="findBtn" class="btn btn-secondary">Find</button>
+          <button id="findReplaceBtn" class="btn btn-primary">Replace All</button>
+        </div>
+      </div>
+      <div class="form-check mt-2">
+        <input class="form-check-input" type="checkbox" id="caseSensitive">
+        <label class="form-check-label" for="caseSensitive">Case sensitive</label>
+      </div>
+      <div id="findReplaceStatus" class="mt-2 text-muted"></div>
+    </div>
+  </div>
+  
+  <p class="text-muted">{{scanDescription}}</p>
+  
+  <div class="card mb-4">
+    <div class="card-header bg-light">
+      <h5 class="mb-0">Vulnerabilities</h5>
+    </div>
+    <div class="card-body">
+      {{#each vulnerabilities}}
+        <div class="vulnerability-section mb-5" data-vuln-id="{{id}}">
+          <div class="d-flex justify-content-between align-items-center">
+            <h3 class="border-bottom pb-2">{{name}}</h3>
+            <span class="badge bg-{{#if (eq severity 'CRITICAL')}}danger{{else if (eq severity 'HIGH')}}warning{{else if (eq severity 'MEDIUM')}}info{{else}}secondary{{/if}} ms-2">{{severity}}</span>
+          </div>
+          
+          <div class="row mb-3">
+            <div class="col-md-8">
+              <label class="form-label fw-bold">Endpoint</label>
+              <input type="text" class="form-control" id="endpoint-{{id}}" value="{{url}}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold">Severity</label>
+              <select class="form-select" id="severity-{{id}}">
+                <option value="CRITICAL" {{#if (eq severity 'CRITICAL')}}selected{{/if}}>CRITICAL</option>
+                <option value="HIGH" {{#if (eq severity 'HIGH')}}selected{{/if}}>HIGH</option>
+                <option value="MEDIUM" {{#if (eq severity 'MEDIUM')}}selected{{/if}}>MEDIUM</option>
+                <option value="LOW" {{#if (eq severity 'LOW')}}selected{{/if}}>LOW</option>
+                <option value="INFO" {{#if (eq severity 'INFO')}}selected{{/if}}>INFO</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <label class="form-label fw-bold mb-0">Description</label>
+              <button type="button" class="btn btn-sm btn-outline-success enhance-section-btn" data-section="description" data-vuln-id="{{id}}">
+                <i class="fas fa-robot me-1"></i> Enhance with LLM
+              </button>
+            </div>
+            <textarea class="tinymce-editor" id="description-{{id}}">{{description}}</textarea>
+          </div>
+          
+          <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <label class="form-label fw-bold mb-0">Risk Assessment</label>
+              <button type="button" class="btn btn-sm btn-outline-success enhance-section-btn" data-section="risk" data-vuln-id="{{id}}">
+                <i class="fas fa-robot me-1"></i> Enhance with LLM
+              </button>
+            </div>
+            <textarea class="tinymce-editor" id="risk-{{id}}">{{risk}}</textarea>
+          </div>
+          
+          <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <label class="form-label fw-bold mb-0">Impact Analysis</label>
+              <button type="button" class="btn btn-sm btn-outline-success enhance-section-btn" data-section="impact" data-vuln-id="{{id}}">
+                <i class="fas fa-robot me-1"></i> Enhance with LLM
+              </button>
+            </div>
+            <textarea class="tinymce-editor" id="impact-{{id}}">{{impact}}</textarea>
+          </div>
+          
+          <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <label class="form-label fw-bold mb-0">Real-World Examples</label>
+              <button type="button" class="btn btn-sm btn-outline-success enhance-section-btn" data-section="examples" data-vuln-id="{{id}}">
+                <i class="fas fa-robot me-1"></i> Enhance with LLM
+              </button>
+            </div>
+            <textarea class="tinymce-editor" id="examples-{{id}}">{{examples}}</textarea>
+          </div>
+          
+          <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <label class="form-label fw-bold mb-0">Remediation</label>
+              <button type="button" class="btn btn-sm btn-outline-success enhance-section-btn" data-section="remediation" data-vuln-id="{{id}}">
+                <i class="fas fa-robot me-1"></i> Enhance with LLM
+              </button>
+            </div>
+            <textarea class="tinymce-editor" id="remediation-{{id}}">{{remediation}}</textarea>
+          </div>
+          
+          <div class="alert alert-secondary">
+            <h5>Evidence</h5>
+            <pre class="mb-0">{{evidence}}</pre>
+          </div>
+        </div>
+      {{/each}}
+    </div>
+  </div>
+</div>
+
+<!-- Section Enhancement Modal -->
+<div class="modal fade" id="enhanceSectionModal" tabindex="-1" aria-labelledby="enhanceSectionModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="enhanceSectionModalLabel">Enhance Section with LLM</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="enhanceSectionForm">
+          <input type="hidden" id="enhanceVulnId" name="vulnId" value="">
+          <input type="hidden" id="enhanceSection" name="section" value="">
+          
+          <div class="mb-3">
+            <label for="enhanceProvider" class="form-label">LLM Provider</label>
+            <select class="form-select" id="enhanceProvider" name="provider">
+              <option value="ollama">Ollama (Local)</option>
+              <option value="openai">OpenAI</option>
+            </select>
+          </div>
+          
+          <div class="mb-3">
+            <label for="enhanceModel" class="form-label">LLM Model</label>
+            <select class="form-select" id="enhanceModel" name="model">
+              <option value="llama3.3">Llama 3.3 (Ollama)</option>
+              <option value="gpt-4o">GPT-4o (OpenAI)</option>
+              <option value="gpt-3.5-turbo">GPT-3.5 Turbo (OpenAI)</option>
+            </select>
+          </div>
+          
+          <div class="mb-3">
+            <label for="enhanceOptions" class="form-label">Enhancement Options</label>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="enhanceOption" id="enhanceOptionNew" value="new" checked>
+              <label class="form-check-label" for="enhanceOptionNew">
+                Generate new content (ignore existing content)
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="enhanceOption" id="enhanceOptionImprove" value="improve">
+              <label class="form-check-label" for="enhanceOptionImprove">
+                Improve existing content
+              </label>
+            </div>
+          </div>
+          
+          <div class="mb-3">
+            <label for="enhanceInstructions" class="form-label">Additional Instructions (Optional)</label>
+            <textarea class="form-control" id="enhanceInstructions" name="instructions" rows="3" placeholder="Add any specific instructions for the LLM..."></textarea>
+          </div>
+          
+          <div class="alert alert-info">
+            <div class="d-flex align-items-center">
+              <div class="me-3">
+                <i class="fas fa-info-circle fa-2x"></i>
+              </div>
+              <div>
+                <h6 class="alert-heading mb-1">Enhancement Information</h6>
+                <p class="mb-0">The LLM will use the vulnerability name, URL, severity, and evidence to generate enhanced content for the selected section.</p>
+              </div>
+            </div>
+          </div>
+        </form>
+        
+        <div id="enhanceProgress" class="d-none">
+          <div class="d-flex justify-content-center mb-3">
+            <div class="spinner-border text-primary" role="status">
+              <span class="visually-hidden">Loading...</span>
+            </div>
+          </div>
+          <div class="progress mb-3">
+            <div id="enhanceProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+          </div>
+          <div id="enhanceStatus" class="text-center text-muted">Starting enhancement...</div>
+          <div class="mt-3">
+            <pre id="enhanceOutput" class="bg-light p-3 rounded" style="max-height: 200px; overflow-y: auto;"></pre>
+          </div>
+        </div>
+        
+        <div id="enhancePreview" class="d-none">
+          <h5 class="mb-3">Enhanced Content Preview</h5>
+          <div class="card">
+            <div class="card-body bg-light">
+              <div id="enhancePreviewContent"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" id="startEnhanceBtn" class="btn btn-success">Start Enhancement</button>
+        <button type="button" id="applyEnhanceBtn" class="btn btn-primary d-none">Apply Changes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CKEditor 5 Classic with Find and Replace plugin -->
+<script src="https://cdn.ckeditor.com/ckeditor5/40.0.0/classic/ckeditor.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/ckeditor5-find-and-replace@0.0.4/dist/find-and-replace.min.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+<!-- Font Awesome for icons -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script>
+  // Display debug information in the debug-info element
+  function updateDebugInfo() {
+    const debugInfo = document.getElementById('debug-info');
+    if (debugInfo) {
+      const vulnSections = document.querySelectorAll('.vulnerability-section');
+      const info = {
+        'Vulnerability Sections': vulnSections.length,
+        'TinyMCE Loaded': typeof tinymce !== 'undefined',
+        'Window Location': window.location.href,
+        'Editor Elements': document.querySelectorAll('.tinymce-editor').length
+      };
+      debugInfo.textContent = JSON.stringify(info, null, 2);
+    }
+  }
+
+  // Run immediately and then every second
+  updateDebugInfo();
+  setInterval(updateDebugInfo, 1000);
+  
+  // Generate a random session ID for this enhancement session
+  function generateSessionId() {
+    return 'session_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  }
+  
+  // Current enhancement session ID
+  let enhancementSessionId = generateSessionId();
+  
+  // Current vulnerability and section being enhanced
+  let currentVulnId = null;
+  let currentSection = null;
+  let enhancedContent = null;
+  let sessionMetadata = null;
+  
+  document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM fully loaded');
+    updateDebugInfo();
+    
+    // Store all editor instances
+    const editorInstances = {};
+    
+    // Initialize CKEditor for each textarea
+    const textareas = document.querySelectorAll('.tinymce-editor');
+    console.log('Found', textareas.length, 'textareas to initialize');
+    
+    // Global variable to track the currently active editor
+    let activeEditor = null;
+    
+    // Function to set the active editor when clicking on an editor
+    function setActiveEditor(editor) {
+      activeEditor = editor;
+      console.log('Active editor set to:', editor.sourceElement.id);
+    }
+    
+    // Function to add a find/replace button to the editor toolbar
+    function addFindReplaceButton(editor) {
+      // Wait a short time for the editor to fully initialize
+      setTimeout(() => {
+        try {
+          // Get the toolbar element
+          const toolbar = editor.ui.view.toolbar.element;
+          if (!toolbar) return;
+          
+          // Create a button container that matches CKEditor's style
+          const buttonContainer = document.createElement('div');
+          buttonContainer.className = 'ck ck-toolbar__items';
+          buttonContainer.style.display = 'flex';
+          buttonContainer.style.alignItems = 'center';
+          
+          // Create the find/replace button
+          const findReplaceButton = document.createElement('button');
+          findReplaceButton.className = 'ck ck-button ck-off';
+          findReplaceButton.setAttribute('type', 'button');
+          findReplaceButton.innerHTML = `
+            <svg class="ck ck-icon ck-button__icon" viewBox="0 0 20 20">
+              <path d="M8.5 4a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zm0 8a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"></path>
+              <path d="M12.5 12l4.5 4.5-1 1-4.5-4.5z"></path>
+            </svg>
+            <span class="ck ck-button__label">Find/Replace</span>
+          `;
+          
+          // Add the button to the container
+          buttonContainer.appendChild(findReplaceButton);
+          
+          // Add the container to the toolbar
+          toolbar.appendChild(buttonContainer);
+          
+          // Create a unique ID for this editor's modal
+          const modalId = `findReplaceModal-${editor.sourceElement.id}`;
+          
+          // Create a modal for this editor if it doesn't exist
+          let modal = document.getElementById(modalId);
+          if (!modal) {
+            modal = document.createElement('div');
+            modal.id = modalId;
+            modal.className = 'modal fade';
+            modal.setAttribute('tabindex', '-1');
+            modal.innerHTML = `
+              <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title">Find and Replace</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                  </div>
+                  <div class="modal-body">
+                    <div class="mb-3">
+                      <label for="findText-${editor.sourceElement.id}" class="form-label">Find</label>
+                      <input type="text" class="form-control" id="findText-${editor.sourceElement.id}">
+                    </div>
+                    <div class="mb-3">
+                      <label for="replaceText-${editor.sourceElement.id}" class="form-label">Replace with</label>
+                      <input type="text" class="form-control" id="replaceText-${editor.sourceElement.id}">
+                    </div>
+                    <div class="form-check mb-3">
+                      <input class="form-check-input" type="checkbox" id="caseSensitive-${editor.sourceElement.id}">
+                      <label class="form-check-label" for="caseSensitive-${editor.sourceElement.id}">
+                        Case sensitive
+                      </label>
+                    </div>
+                    <div id="findReplaceStatus-${editor.sourceElement.id}" class="alert alert-info d-none"></div>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="findBtn-${editor.sourceElement.id}">Find</button>
+                    <button type="button" class="btn btn-primary" id="replaceAllBtn-${editor.sourceElement.id}">Replace All</button>
+                  </div>
+                </div>
+              </div>
+            `;
+            document.body.appendChild(modal);
+            
+            // Add event listeners for find and replace buttons
+            document.getElementById(`findBtn-${editor.sourceElement.id}`).addEventListener('click', function() {
+              const findText = document.getElementById(`findText-${editor.sourceElement.id}`).value;
+              const caseSensitive = document.getElementById(`caseSensitive-${editor.sourceElement.id}`).checked;
+              const statusElement = document.getElementById(`findReplaceStatus-${editor.sourceElement.id}`);
+              
+              if (!findText) {
+                statusElement.textContent = 'Please enter text to find.';
+                statusElement.className = 'alert alert-danger mt-2';
+                statusElement.classList.remove('d-none');
+                return;
+              }
+              
+              try {
+                // Get content from this editor
+                const currentContent = editor.getData();
+                
+                // Escape special characters for regex
+                const escapedFindText = findText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const flags = caseSensitive ? 'g' : 'gi';
+                const regex = new RegExp(escapedFindText, flags);
+                
+                // Count matches
+                const matches = (currentContent.match(regex) || []).length;
+                
+                // Update status
+                if (matches > 0) {
+                  statusElement.textContent = `Found ${matches} occurrences of "${findText}".`;
+                  statusElement.className = 'alert alert-success mt-2';
+                } else {
+                  statusElement.textContent = `No occurrences of "${findText}" found.`;
+                  statusElement.className = 'alert alert-warning mt-2';
+                }
+                statusElement.classList.remove('d-none');
+              } catch (error) {
+                console.error('Error finding text:', error);
+                statusElement.textContent = `Error: ${error.message}`;
+                statusElement.className = 'alert alert-danger mt-2';
+                statusElement.classList.remove('d-none');
+              }
+            });
+            
+            document.getElementById(`replaceAllBtn-${editor.sourceElement.id}`).addEventListener('click', function() {
+              const findText = document.getElementById(`findText-${editor.sourceElement.id}`).value;
+              const replaceText = document.getElementById(`replaceText-${editor.sourceElement.id}`).value;
+              const caseSensitive = document.getElementById(`caseSensitive-${editor.sourceElement.id}`).checked;
+              const statusElement = document.getElementById(`findReplaceStatus-${editor.sourceElement.id}`);
+              
+              if (!findText) {
+                statusElement.textContent = 'Please enter text to find.';
+                statusElement.className = 'alert alert-danger mt-2';
+                statusElement.classList.remove('d-none');
+                return;
+              }
+              
+              try {
+                // Get content from this editor
+                const currentContent = editor.getData();
+                
+                // Escape special characters for regex
+                const escapedFindText = findText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const flags = caseSensitive ? 'g' : 'gi';
+                const regex = new RegExp(escapedFindText, flags);
+                
+                // Count matches before replacement
+                const matches = (currentContent.match(regex) || []).length;
+                
+                // Perform replacement
+                const newContent = currentContent.replace(regex, replaceText);
+                
+                // Set the new content
+                editor.setData(newContent);
+                
+                // Update status
+                if (matches > 0) {
+                  statusElement.textContent = `Replaced ${matches} occurrences of "${findText}" with "${replaceText}".`;
+                  statusElement.className = 'alert alert-success mt-2';
+                } else {
+                  statusElement.textContent = `No occurrences of "${findText}" found.`;
+                  statusElement.className = 'alert alert-warning mt-2';
+                }
+                statusElement.classList.remove('d-none');
+              } catch (error) {
+                console.error('Error replacing text:', error);
+                statusElement.textContent = `Error: ${error.message}`;
+                statusElement.className = 'alert alert-danger mt-2';
+                statusElement.classList.remove('d-none');
+              }
+            });
+          }
+          
+          // Add click event to show this editor's modal
+          findReplaceButton.addEventListener('click', function() {
+            // Set this editor as the active one
+            setActiveEditor(editor);
+            
+            // Show the modal
+            const modalInstance = new bootstrap.Modal(modal);
+            modalInstance.show();
+            
+            // Focus the find text input
+            setTimeout(() => {
+              document.getElementById(`findText-${editor.sourceElement.id}`).focus();
+            }, 500);
+          });
+        } catch (error) {
+          console.error('Error adding find/replace button:', error);
+        }
+      }, 200);
+    }
+    
+    // Add event listeners for find and replace buttons
+    document.getElementById('findBtn').addEventListener('click', function() {
+      if (!activeEditor) {
+        alert('Please click on an editor first');
+        return;
+      }
+      
+      const findText = document.getElementById('findText').value;
+      const caseSensitive = document.getElementById('caseSensitive').checked;
+      const statusElement = document.getElementById('findReplaceStatus');
+      
+      if (!findText) {
+        statusElement.textContent = 'Please enter text to find.';
+        statusElement.className = 'alert alert-danger mt-2';
+        return;
+      }
+      
+      try {
+        // Get content from the active editor
+        const currentContent = activeEditor.getData();
+        
+        // Escape special characters for regex
+        const escapedFindText = findText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const flags = caseSensitive ? 'g' : 'gi';
+        const regex = new RegExp(escapedFindText, flags);
+        
+        // Count matches
+        const matches = (currentContent.match(regex) || []).length;
+        
+        // Update status
+        if (matches > 0) {
+          statusElement.textContent = `Found ${matches} occurrences of "${findText}" in the active editor.`;
+          statusElement.className = 'alert alert-success mt-2';
+        } else {
+          statusElement.textContent = `No occurrences of "${findText}" found in the active editor.`;
+          statusElement.className = 'alert alert-warning mt-2';
+        }
+      } catch (error) {
+        console.error('Error finding text:', error);
+        statusElement.textContent = `Error: ${error.message}`;
+        statusElement.className = 'alert alert-danger mt-2';
+      }
+    });
+    
+    document.getElementById('findReplaceBtn').addEventListener('click', function() {
+      if (!activeEditor) {
+        alert('Please click on an editor first');
+        return;
+      }
+      
+      const findText = document.getElementById('findText').value;
+      const replaceText = document.getElementById('replaceText').value;
+      const caseSensitive = document.getElementById('caseSensitive').checked;
+      const statusElement = document.getElementById('findReplaceStatus');
+      
+      if (!findText) {
+        statusElement.textContent = 'Please enter text to find.';
+        statusElement.className = 'alert alert-danger mt-2';
+        return;
+      }
+      
+      try {
+        // Get content from the active editor
+        const currentContent = activeEditor.getData();
+        
+        // Escape special characters for regex
+        const escapedFindText = findText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const flags = caseSensitive ? 'g' : 'gi';
+        const regex = new RegExp(escapedFindText, flags);
+        
+        // Count matches before replacement
+        const matches = (currentContent.match(regex) || []).length;
+        
+        // Perform replacement
+        const newContent = currentContent.replace(regex, replaceText);
+        
+        // Set the new content
+        activeEditor.setData(newContent);
+        
+        // Update status
+        if (matches > 0) {
+          statusElement.textContent = `Replaced ${matches} occurrences of "${findText}" with "${replaceText}" in the active editor.`;
+          statusElement.className = 'alert alert-success mt-2';
+        } else {
+          statusElement.textContent = `No occurrences of "${findText}" found in the active editor.`;
+          statusElement.className = 'alert alert-warning mt-2';
+        }
+      } catch (error) {
+        console.error('Error replacing text:', error);
+        statusElement.textContent = `Error: ${error.message}`;
+        statusElement.className = 'alert alert-danger mt-2';
+      }
+    });
+    
+    textareas.forEach(textarea => {
+      ClassicEditor
+        .create(textarea, {
+          toolbar: [
+            'heading', '|', 'bold', 'italic', 'link', 'bulletedList', 'numberedList', 
+            '|', 'outdent', 'indent', '|', 'blockQuote', 'insertTable', 'undo', 'redo'
+          ]
+        })
+        .then(editor => {
+          console.log('CKEditor initialized for:', textarea.id);
+          // Store the editor instance
+          editorInstances[textarea.id] = editor;
+          
+          // Fix width issues by directly styling the editor element
+          const editorElement = editor.ui.view.element;
+          if (editorElement) {
+            editorElement.style.width = '100%';
+          }
+          
+          // Set height for the editable area
+          const editableElement = editor.ui.view.editable.element;
+          if (editableElement) {
+            editableElement.style.minHeight = '300px';
+          }
+          
+          // Set this editor as active when clicked
+          editor.ui.view.element.addEventListener('click', () => {
+            setActiveEditor(editor);
+          });
+          
+          // Set as active editor on focus
+          editor.ui.focusTracker.on('change:isFocused', (evt, name, isFocused) => {
+            if (isFocused) {
+              setActiveEditor(editor);
+            }
+          });
+          
+          // Set as initial active editor if it's the first one
+          if (!activeEditor) {
+            activeEditor = editor;
+          }
+          
+          // Add the find/replace button to this editor's toolbar
+          addFindReplaceButton(editor);
+        })
+        .catch(error => {
+          console.error('Error initializing CKEditor:', error);
+        });
+    });
+    
+    // Implement custom find functionality
+    document.getElementById('findBtn').addEventListener('click', function() {
+      const findText = document.getElementById('findText').value;
+      const caseSensitive = document.getElementById('caseSensitive').checked;
+      const statusElement = document.getElementById('findReplaceStatus');
+      
+      if (!findText) {
+        statusElement.textContent = 'Please enter text to find.';
+        statusElement.className = 'mt-2 text-danger';
+        return;
+      }
+      
+      console.log('Finding text:', findText, 'Case sensitive:', caseSensitive);
+      
+      let totalMatches = 0;
+      
+      // Loop through each editor and find matches
+      Object.keys(editorInstances).forEach(id => {
+        try {
+          const editor = editorInstances[id];
+          // Get content from the editor
+          const currentContent = editor.getData();
+          
+          // Escape special characters for regex
+          const escapedFindText = findText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const flags = caseSensitive ? 'g' : 'gi';
+          const regex = new RegExp(escapedFindText, flags);
+          
+          // Count matches
+          const matches = (currentContent.match(regex) || []).length;
+          console.log('Editor ID:', id, 'Matches found:', matches);
+          totalMatches += matches;
+        } catch (error) {
+          console.error('Error finding in editor', id, error);
+        }
+      });
+      
+      // Update status
+      if (totalMatches > 0) {
+        statusElement.textContent = `Found ${totalMatches} occurrences of "${findText}".`;
+        statusElement.className = 'mt-2 text-success';
+      } else {
+        statusElement.textContent = `No occurrences of "${findText}" found.`;
+        statusElement.className = 'mt-2 text-warning';
+      }
+    });
+    
+    // Implement custom find and replace functionality
+    document.getElementById('findReplaceBtn').addEventListener('click', function() {
+      const findText = document.getElementById('findText').value;
+      const replaceText = document.getElementById('replaceText').value;
+      const caseSensitive = document.getElementById('caseSensitive').checked;
+      const statusElement = document.getElementById('findReplaceStatus');
+      
+      if (!findText) {
+        statusElement.textContent = 'Please enter text to find.';
+        statusElement.className = 'mt-2 text-danger';
+        return;
+      }
+      
+      console.log('Find and replace: ', { findText, replaceText, caseSensitive });
+      
+      let totalReplacements = 0;
+      
+      // Loop through each editor and perform replacements
+      Object.keys(editorInstances).forEach(id => {
+        try {
+          const editor = editorInstances[id];
+          
+          // Get content from the editor
+          let currentContent = editor.getData();
+          console.log('Editor ID:', id);
+          console.log('Content before:', currentContent);
+          
+          // Escape special characters for regex
+          const escapedFindText = findText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const flags = caseSensitive ? 'g' : 'gi';
+          const regex = new RegExp(escapedFindText, flags);
+          
+          // Count matches before replacement
+          const matches = (currentContent.match(regex) || []).length;
+          console.log('Matches found:', matches);
+          totalReplacements += matches;
+          
+          // Perform replacement
+          const newContent = currentContent.replace(regex, replaceText);
+          console.log('Content after:', newContent);
+          
+          // Set the new content
+          editor.setData(newContent);
+        } catch (error) {
+          console.error('Error in find/replace for editor', id, error);
+        }
+      });
+      
+      // Update status
+      if (totalReplacements > 0) {
+        statusElement.textContent = `Replaced ${totalReplacements} occurrences of "${findText}" with "${replaceText}".`;
+        statusElement.className = 'mt-2 text-success';
+      } else {
+        statusElement.textContent = `No occurrences of "${findText}" found.`;
+        statusElement.className = 'mt-2 text-warning';
+      }
+    });
+    
+    // Save button handler
+    // Handle enhance section button clicks
+    document.querySelectorAll('.enhance-section-btn').forEach(button => {
+      button.addEventListener('click', function() {
+        // Get vulnerability ID and section from data attributes
+        const vulnId = this.getAttribute('data-vuln-id');
+        const section = this.getAttribute('data-section');
+        
+        // Set current vulnerability and section
+        currentVulnId = vulnId;
+        currentSection = section;
+        
+        // Update modal title with section name
+        const sectionName = section.charAt(0).toUpperCase() + section.slice(1);
+        document.getElementById('enhanceSectionModalLabel').textContent = `Enhance ${sectionName} with LLM`;
+        
+        // Set hidden form fields
+        document.getElementById('enhanceVulnId').value = vulnId;
+        document.getElementById('enhanceSection').value = section;
+        
+        // Reset modal state
+        document.getElementById('enhanceSectionForm').style.display = 'block';
+        document.getElementById('enhanceProgress').classList.add('d-none');
+        document.getElementById('enhancePreview').classList.add('d-none');
+        document.getElementById('startEnhanceBtn').classList.remove('d-none');
+        document.getElementById('applyEnhanceBtn').classList.add('d-none');
+        
+        // Generate a new session ID
+        enhancementSessionId = generateSessionId();
+        
+        // Show the modal
+        const modal = new bootstrap.Modal(document.getElementById('enhanceSectionModal'));
+        modal.show();
+      });
+    });
+    
+    // Handle start enhancement button click
+    document.getElementById('startEnhanceBtn').addEventListener('click', function() {
+      // Hide the form and show progress
+      document.getElementById('enhanceSectionForm').style.display = 'none';
+      document.getElementById('enhanceProgress').classList.remove('d-none');
+      document.getElementById('startEnhanceBtn').classList.add('d-none');
+      
+      // Get form data
+      const vulnId = document.getElementById('enhanceVulnId').value;
+      const section = document.getElementById('enhanceSection').value;
+      const provider = document.getElementById('enhanceProvider').value;
+      const model = document.getElementById('enhanceModel').value;
+      const enhanceOption = document.querySelector('input[name="enhanceOption"]:checked').value;
+      const instructions = document.getElementById('enhanceInstructions').value;
+      
+      // Get current content from the editor
+      const editorId = `${section}-${vulnId}`;
+      const editor = editorInstances[editorId];
+      const currentContent = editor ? editor.getData() : '';
+      
+      // Get vulnerability details
+      const vulnSection = document.querySelector(`.vulnerability-section[data-vuln-id="${vulnId}"]`);
+      const vulnName = vulnSection.querySelector('h3').textContent.trim();
+      const vulnSeverity = vulnSection.querySelector('.badge').textContent.trim();
+      const vulnUrl = document.getElementById(`endpoint-${vulnId}`).value;
+      const vulnEvidence = vulnSection.querySelector('.alert-secondary pre').textContent;
+      
+      // Prepare data for the API call
+      const enhanceData = {
+        vulnId,
+        section,
+        provider,
+        model,
+        enhanceOption,
+        instructions,
+        currentContent: enhanceOption === 'improve' ? currentContent : '',
+        vulnDetails: {
+          name: vulnName,
+          severity: vulnSeverity,
+          url: vulnUrl,
+          evidence: vulnEvidence
+        },
+        sessionId: enhancementSessionId
+      };
+      
+      // Get the scanId from the URL path
+      const pathParts = window.location.pathname.split('/');
+      const scanId = pathParts[2]; // The scanId should be the third part of the path: /reports/{scanId}/edit
+      
+      // Connect to Socket.IO for real-time updates
+      const socket = io();
+      
+      // Join the session room
+      socket.emit('join-session', enhancementSessionId);
+      
+      // Listen for enhancement progress updates
+      socket.on('enhancement-progress', function(data) {
+        try {
+          const progressBar = document.getElementById('enhanceProgressBar');
+          if (progressBar) {
+            // Ensure percentage is a valid number
+            let percentage = parseFloat(data.percentage);
+            if (isNaN(percentage)) percentage = 0;
+            if (percentage < 0) percentage = 0;
+            if (percentage > 100) percentage = 100;
+            
+            // Format to at most 1 decimal place
+            percentage = Math.round(percentage * 10) / 10;
+            
+            // Update progress bar
+            progressBar.style.width = `${percentage}%`;
+            progressBar.textContent = `${percentage}%`;
+            progressBar.setAttribute('aria-valuenow', percentage);
+            
+            // Update status text
+            const statusElement = document.getElementById('enhanceStatus');
+            if (statusElement) {
+              statusElement.textContent = `Processing: ${data.current} of ${data.total} (${percentage}%)`;
+            }
+          }
+        } catch (error) {
+          console.error('Error updating progress:', error);
+        }
+      });
+      
+      // Listen for scanner output
+      socket.on('scanner-output', function(data) {
+        const outputElement = document.getElementById('enhanceOutput');
+        outputElement.textContent += data.data;
+        outputElement.scrollTop = outputElement.scrollHeight;
+      });
+      
+      // Listen for enhancement completion
+      socket.on('section-enhancement-complete', function(data) {
+        try {
+          // Store metadata for later use
+          sessionMetadata = {
+            success: data.success,
+            section: data.section,
+            vulnId: data.vulnId,
+            timestamp: data.timestamp,
+            metadataUpdated: data.metadataUpdated || false,
+            metadataUpdateOutput: data.metadataUpdateOutput || ''
+          };
+          
+          // Update status
+          const statusElement = document.getElementById('enhanceStatus');
+          if (statusElement) {
+            if (data.success) {
+              statusElement.textContent = 'Enhancement complete!';
+              if (data.metadataUpdated) {
+                statusElement.innerHTML += ' <span class="badge bg-success">Metadata Updated</span>';
+              }
+            } else {
+              statusElement.textContent = `Error: ${data.error || 'Unknown error'}`;
+            }
+          }
+          
+          const progressBar = document.getElementById('enhanceProgressBar');
+          if (progressBar) {
+            progressBar.style.width = '100%';
+            progressBar.textContent = '100%';
+            
+            // Add error class if there was an error
+            if (!data.success) {
+              progressBar.classList.add('bg-danger');
+            }
+          }
+          
+          if (data.success && data.content) {
+            // Store the enhanced content
+            enhancedContent = data.content;
+            
+            // Show the preview
+            const previewContentElement = document.getElementById('enhancePreviewContent');
+            if (previewContentElement) {
+              previewContentElement.innerHTML = enhancedContent;
+            }
+            
+            const previewElement = document.getElementById('enhancePreview');
+            if (previewElement) {
+              previewElement.classList.remove('d-none');
+            }
+            
+            const applyButton = document.getElementById('applyEnhanceBtn');
+            if (applyButton) {
+              applyButton.classList.remove('d-none');
+            }
+            
+            // Add metadata update info to the preview
+            if (data.metadataUpdated) {
+              const metadataInfo = document.createElement('div');
+              metadataInfo.className = 'alert alert-info mt-3';
+              metadataInfo.innerHTML = `
+                <h6>Metadata Updated</h6>
+                <p class="small mb-0">The scan metadata has been updated to reflect these changes.</p>
+              `;
+              previewElement.appendChild(metadataInfo);
+            }
+          } else {
+            console.error('Enhancement failed:', data.error || 'Unknown error');
+          }
+          
+          // Leave the session room
+          socket.emit('leave-session', enhancementSessionId);
+          socket.disconnect();
+        } catch (error) {
+          console.error('Error handling enhancement completion:', error);
+        }
+      });
+      
+      // Make the API call to start the enhancement
+      fetch(`/api/reports/${scanId}/enhance-section`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(enhanceData)
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (!data.success) {
+          document.getElementById('enhanceStatus').textContent = `Error: ${data.message}`;
+          document.getElementById('enhanceProgressBar').classList.add('bg-danger');
+        }
+      })
+      .catch(error => {
+        console.error('Error starting enhancement:', error);
+        document.getElementById('enhanceStatus').textContent = `Error: ${error.message}`;
+        document.getElementById('enhanceProgressBar').classList.add('bg-danger');
+      });
+    });
+    
+    // Handle apply enhancement button click
+    document.getElementById('applyEnhanceBtn').addEventListener('click', function() {
+      if (enhancedContent && currentVulnId && currentSection) {
+        // Get the editor instance
+        const editorId = `${currentSection}-${currentVulnId}`;
+        const editor = editorInstances[editorId];
+        
+        if (editor) {
+          // Set the enhanced content in the editor
+          editor.setData(enhancedContent);
+          
+          // Close the modal
+          bootstrap.Modal.getInstance(document.getElementById('enhanceSectionModal')).hide();
+          
+          // Show success message with metadata update status
+          const alert = document.createElement('div');
+          alert.className = 'alert alert-success alert-dismissible fade show';
+          
+          // Check if we have metadata update status information
+          const metadataUpdated = sessionMetadata && sessionMetadata.metadataUpdated;
+          const metadataStatus = metadataUpdated ? 
+            '<span class="badge bg-success ms-2">Metadata Updated</span>' : 
+            '';
+            
+          alert.innerHTML = `
+            <strong>Success!</strong> The ${currentSection} section has been enhanced. ${metadataStatus}
+            <p class="small mb-0">Changes have been applied to the editor. Remember to save the report to persist your changes.</p>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          `;
+          document.querySelector('.container').insertBefore(alert, document.querySelector('.container').firstChild);
+          
+          // Auto-dismiss after 8 seconds
+          setTimeout(() => {
+            alert.classList.remove('show');
+            setTimeout(() => alert.remove(), 500);
+          }, 8000);
+          
+          // Reset current values
+          enhancedContent = null;
+        }
+      }
+    });
+    
+    document.getElementById('saveReportBtn').addEventListener('click', function() {
+      // Get the scanId from the URL path
+      const pathParts = window.location.pathname.split('/');
+      const scanId = pathParts[2]; // The scanId should be the third part of the path: /reports/{scanId}/edit
+      
+      console.log('Saving report for scan ID:', scanId);
+      
+      const vulnerabilities = [];
+      
+      // Collect data from all vulnerability sections
+      document.querySelectorAll('.vulnerability-section').forEach(section => {
+        const vulnId = section.dataset.vulnId;
+        
+        // Get editor data and ensure it's properly saved
+        let description = '';
+        let risk = '';
+        let impact = '';
+        let examples = '';
+        let remediation = '';
+        
+        if (editorInstances[`description-${vulnId}`]) {
+          description = editorInstances[`description-${vulnId}`].getData();
+          console.log(`Description for ${vulnId}:`, description.substring(0, 50) + '...');
+        }
+        
+        if (editorInstances[`risk-${vulnId}`]) {
+          risk = editorInstances[`risk-${vulnId}`].getData();
+          console.log(`Risk for ${vulnId}:`, risk.substring(0, 50) + '...');
+        }
+        
+        if (editorInstances[`impact-${vulnId}`]) {
+          impact = editorInstances[`impact-${vulnId}`].getData();
+          console.log(`Impact for ${vulnId}:`, impact.substring(0, 50) + '...');
+        }
+        
+        if (editorInstances[`examples-${vulnId}`]) {
+          examples = editorInstances[`examples-${vulnId}`].getData();
+          console.log(`Examples for ${vulnId}:`, examples.substring(0, 50) + '...');
+        }
+        
+        if (editorInstances[`remediation-${vulnId}`]) {
+          remediation = editorInstances[`remediation-${vulnId}`].getData();
+          console.log(`Remediation for ${vulnId}:`, remediation.substring(0, 50) + '...');
+        }
+        
+        vulnerabilities.push({
+          id: vulnId,
+          name: section.querySelector('h3').textContent.trim(), // Add the name for reference
+          url: document.getElementById(`endpoint-${vulnId}`).value, // Still using 'url' as the property name for backend compatibility
+          severity: document.getElementById(`severity-${vulnId}`).value,
+          description: description,
+          risk: risk,
+          impact: impact,
+          examples: examples,
+          remediation: remediation
+        });
+      });
+      
+      // Send data to server
+      fetch(`/reports/${scanId}/save`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ vulnerabilities })
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        if (data.success) {
+          // Show success message
+          const alert = document.createElement('div');
+          alert.className = 'alert alert-success alert-dismissible fade show';
+          alert.innerHTML = `
+            <strong>Success!</strong> Report saved successfully. <a href="/dashboard" class="alert-link">Return to Dashboard</a>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          `;
+          document.querySelector('.container').prepend(alert);
+          
+          // Store the data in localStorage as a backup
+          try {
+            localStorage.setItem(`report_${scanId}_timestamp`, Date.now());
+            localStorage.setItem(`report_${scanId}_data`, JSON.stringify(vulnerabilities));
+            console.log('Report data backed up to localStorage');
+          } catch (e) {
+            console.warn('Could not save to localStorage:', e);
+          }
+          
+          // Auto-dismiss after 5 seconds
+          setTimeout(() => {
+            const bsAlert = new bootstrap.Alert(alert);
+            bsAlert.close();
+          }, 5000);
+        } else {
+          // Show error message
+          const alert = document.createElement('div');
+          alert.className = 'alert alert-danger alert-dismissible fade show';
+          alert.innerHTML = `
+            <strong>Error!</strong> ${data.error}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          `;
+          document.querySelector('.container').prepend(alert);
+        }
+      })
+      .catch(error => {
+        console.error('Error saving report:', error);
+        // Show error message
+        const alert = document.createElement('div');
+        alert.className = 'alert alert-danger alert-dismissible fade show';
+        alert.innerHTML = `
+          <strong>Error!</strong> Failed to save report: ${error.message}. Please try again.
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+        document.querySelector('.container').prepend(alert);
+      });
+    });
+  });
+</script>
+
+<style>
+  /* CKEditor styling */
+  .ck-editor__editable {
+    min-height: 300px !important;
+    max-height: 500px !important;
+  }
+  
+  .ck.ck-editor {
+    width: 100% !important;
+  }
+  
+  .ck.ck-editor__main {
+    width: 100% !important;
+  }
+  
+  .ck.ck-content {
+    width: 100% !important;
+  }
+  
+  .ck.ck-editor__editable_inline {
+    padding: 0.5rem !important;
+    overflow-y: auto !important;
+  }
+  
+  /* Fix width issues */
+  .ck-editor {
+    display: block !important;
+  }
+  
+  .ck-editor__editable {
+    width: 100% !important;
+  }
+  
+  /* Other styles */
+  pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+    background-color: #f8f9fa;
+    padding: 1rem;
+    border-radius: 0.25rem;
+  }
+</style>

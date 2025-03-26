@@ -1,0 +1,23 @@
+--- llm_description.py.orig
++++ llm_description.py
+@@ -242,7 +242,10 @@
+     def _setup_prompt_template(self) -> None:
+         """Set up the prompt template for description enhancement."""
+-        template = """
++        # Get template from prompt manager
++        template_str = get_prompt_template('description_template')
++        if not template_str:
++            logger.warning('Could not load description template from prompt manager, using default template')
++            template_str = """
+         You are a cybersecurity expert tasked with enhancing vulnerability descriptions with contextual information.
+         
+         Vulnerability: {vulnerability}
+@@ -265,7 +268,7 @@
+         
+         self.prompt_template = PromptTemplate(
+             input_variables=["vulnerability", "severity", "endpoint", "details", "api_structure"],
+-            template=template,
++            template=template_str,
+         )
+     
+     def _detect_api_structure(self, endpoint: str) -> str:

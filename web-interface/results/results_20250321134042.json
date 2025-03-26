@@ -1,0 +1,31 @@
+{
+  "finding_id": "db5c3165",
+  "scanner": "Scanner",
+  "timestamp": "20250321134042",
+  "request": {
+    "method": "GET",
+    "url": "http://localhost:5002/users/v1/_debug",
+    "headers": {
+      "User-Agent": "python-requests/2.32.3",
+      "Accept-Encoding": "gzip, deflate, zstd",
+      "Accept": "*/*",
+      "Connection": "keep-alive"
+    },
+    "params": null,
+    "data": null,
+    "json": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "Server": "Werkzeug/2.2.3 Python/3.11.11",
+      "Date": "Fri, 21 Mar 2025 18:40:42 GMT",
+      "Content-Type": "application/json",
+      "Content-Length": "1487",
+      "Connection": "close"
+    },
+    "content_length": 1487,
+    "elapsed": 0.003011,
+    "body": "{\n  \"users\": [\n    {\n      \"admin\": false,\n      \"email\": \"mail1@mail.com\",\n      \"password\": \"NewPass@1742576297\",\n      \"username\": \"name1\"\n    },\n    {\n      \"admin\": false,\n      \"email\": \"mail2@mail.com\",\n      \"password\": \"pass2\",\n      \"username\": \"name2\"\n    },\n    {\n      \"admin\": true,\n      \"email\": \"admin@mail.com\",\n      \"password\": \"pass1\",\n      \"username\": \"admin\"\n    },\n    {\n      \"admin\": true,\n      \"email\": \"admin_user_1742576297_dzppsu@example.com\",\n      \"password\": \"Admin@1742576297\",\n      \"username\": \"admin_user_1742576297_dzppsu@example.com\"\n    },\n    {\n      \"admin\": false,\n      \"email\": \"test_user_1742576297_iv1ivm@example.com\",\n      \"password\": \"Test@1742576297\",\n      \"username\": \"test_user_1742576297_iv1ivm\"\n    },\n    {\n      \"admin\": false,\n      \"email\": \"test_mass_assignment_1742576297@example.com\",\n      \"password\": \"Test@123456\",\n      \"username\": \"test_mass_assignment_1742576297\"\n    },\n    {\n      \"admin\": true,\n      \"email\": \"test_mass_reg_1742580572@example.com\",\n      \"password\": \"Test@1742580572\",\n      \"username\": \"test_mass_reg_1742580572\"\n    },\n    {\n      \"admin\": true,\n      \"email\": \"test_user_1742576297_gv1d1v@example.com\",\n      \"password\": \"Test@1742576297\",\n      \"username\": \"test_user_1742576297_gv1d1v\"\n    },\n    {\n      \"admin\": true,\n      \"email\": \"admin_user_1742582439_yr1fb4@example.com\",\n      \"password\": \"Admin@1742582439\",\n      \"username\": \"admin_user_1742582439_yr1fb4@example.com\"\n    }\n  ]\n}\n"
+  }
+}

@@ -1,0 +1,1014 @@
+<div class="row">
+  <div class="col-lg-8 mx-auto">
+    <h2 class="mb-4">Scan Target</h2>
+    
+    {{#if error}}
+    <div class="alert alert-danger" role="alert">
+      {{error}}
+    </div>
+    {{/if}}
+    
+    <div class="card">
+      <div class="card-body">
+        <form action="/scan" method="POST" enctype="multipart/form-data">
+          <div class="form-group mb-3">
+            <label for="title" class="form-label">Title <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="title" name="title" placeholder="Scan Title" required>
+          </div>
+          
+          <div class="form-group mb-3">
+            <label for="description" class="form-label">Description</label>
+            <textarea class="form-control" id="description" name="description" rows="3" placeholder="Brief description of this scan (max 256 characters)" maxlength="256"></textarea>
+          </div>
+          
+          <div class="form-group mb-3">
+            <label for="targetUrl" class="form-label">Target URL <span class="text-danger">*</span></label>
+            <input type="url" class="form-control" id="targetUrl" name="targetUrl" placeholder="e.g., http://localhost:5003" required>
+            <div class="form-text">The base URL of the API you want to scan</div>
+          </div>
+          
+          <div class="form-group mb-3">
+            <label class="form-label">Allow to test for DoS</label>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="allowDos" id="allowDosNo" value="false" checked>
+              <label class="form-check-label" for="allowDosNo">
+                No
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="allowDos" id="allowDosYes" value="true">
+              <label class="form-check-label" for="allowDosYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-text">Enable testing for Denial of Service vulnerabilities (may impact target performance)</div>
+          </div>
+          
+          <div class="form-group mb-3">
+            <label class="form-label">Blind SQL Injection</label>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="sqlInjection" id="sqlInjectionNone" value="none">
+              <label class="form-check-label" for="sqlInjectionNone">
+                No
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="sqlInjection" id="sqlInjectionBlind" value="blind">
+              <label class="form-check-label" for="sqlInjectionBlind">
+                Yes (Blind)
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="sqlInjection" id="sqlInjectionSmart" value="smart" checked>
+              <label class="form-check-label" for="sqlInjectionSmart">
+                Smart
+              </label>
+            </div>
+            <div class="form-text">Configure SQL injection testing approach</div>
+          </div>
+          
+          <div class="form-group mb-3">
+            <label class="form-label">LLM Enhancement</label>
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="useLlmEnhancement" name="useLlmEnhancement" checked>
+              <label class="form-check-label" for="useLlmEnhancement">
+                Enhance results with LLM
+              </label>
+            </div>
+            <div class="form-text">Use LLM to enhance vulnerability descriptions and provide remediation advice</div>
+          </div>
+          
+          <div id="llmOptionsContainer" class="form-group mb-3">
+            <div class="row">
+              <div class="col-md-6">
+                <label for="llmProvider" class="form-label">LLM Provider</label>
+                <select class="form-control" id="llmProvider" name="llmProvider">
+                  <option value="openai" selected>OpenAI</option>
+                  <option value="ollama">Ollama</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label for="llmModel" class="form-label">LLM Model</label>
+                <select class="form-control" id="llmModel" name="llmModel">
+                  <option value="gpt-4o" selected>GPT-4o (OpenAI)</option>
+                  <option value="gpt-3.5-turbo">GPT-3.5 Turbo (OpenAI)</option>
+                  <option value="llama3.3">Llama 3.3 (Ollama)</option>
+                  <option value="llama3">Llama 3 (Ollama)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          
+          <div class="form-group mb-4">
+            <label class="form-label">Swagger/OpenAPI File <span class="text-danger">*</span></label>
+            <div class="drag-area" id="dragArea">
+              <input type="file" name="swaggerFile" id="swaggerFile" hidden accept=".json,.yaml,.yml" required>
+              <i class="bi bi-cloud-arrow-up"></i>
+              <h3>Drag & Drop</h3>
+              <p>or <span class="browse-btn">browse files</span></p>
+            </div>
+            <div class="file-info" id="fileInfo">
+              <div class="d-flex align-items-center">
+                <i class="bi bi-file-earmark-text me-2"></i>
+                <span id="fileName">No file selected</span>
+                <button type="button" class="btn btn-sm btn-link ms-auto" id="removeFile">
+                  <i class="bi bi-x-lg"></i>
+                </button>
+              </div>
+            </div>
+            <div class="form-text">Upload your Swagger/OpenAPI specification file (JSON or YAML format)</div>
+          </div>
+          
+          <div class="d-grid">
+            <button type="submit" id="scanButton" class="btn btn-primary">Scan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Scanner Output Modal -->
+<div class="modal fade" id="scannerModal" tabindex="-1" aria-labelledby="scannerModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="scannerModalLabel">Scanner Progress</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="progress mb-3">
+          <div id="scanProgress" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+        </div>
+        
+        <div class="card mb-3">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Configuration Generation</span>
+            <span id="configStatus" class="badge bg-secondary">Pending</span>
+          </div>
+          <div class="card-body">
+            <pre id="configOutput" class="mb-0 output-pre"></pre>
+          </div>
+        </div>
+        
+        <div class="card mb-3">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Scanner Execution</span>
+            <span id="scanStatus" class="badge bg-secondary">Pending</span>
+          </div>
+          <div class="card-body">
+            <pre id="scanOutput" class="mb-0 output-pre"></pre>
+          </div>
+        </div>
+        
+        <div class="card mb-3">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Report Generation</span>
+            <span id="reportStatus" class="badge bg-secondary">Pending</span>
+          </div>
+          <div class="card-body">
+            <pre id="reportOutput" class="mb-0 output-pre"></pre>
+          </div>
+        </div>
+        
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span>LLM Enhancement</span>
+            <span id="enhanceStatus" class="badge bg-secondary">Pending</span>
+          </div>
+          <div class="card-body">
+            <pre id="enhanceOutput" class="mb-0 output-pre"></pre>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <div class="d-flex w-100 justify-content-between">
+          <div class="scan-controls">
+            <button id="pauseResumeBtn" type="button" class="btn btn-warning" style="display: none;">Pause</button>
+            <button id="stopScanBtn" type="button" class="btn btn-danger" style="display: none;">Stop</button>
+          </div>
+          <div>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            <a id="viewReportBtn" href="#" class="btn btn-primary" style="display: none;">View Report</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const dragArea = document.getElementById('dragArea');
+    const fileInput = document.getElementById('swaggerFile');
+    const fileInfo = document.getElementById('fileInfo');
+    const fileName = document.getElementById('fileName');
+    const removeFile = document.getElementById('removeFile');
+    
+    // Click on drag area to trigger file input
+    dragArea.addEventListener('click', () => {
+      fileInput.click();
+    });
+    
+    // Toggle LLM options visibility based on checkbox
+    document.getElementById('useLlmEnhancement').addEventListener('change', function() {
+      const llmOptionsContainer = document.getElementById('llmOptionsContainer');
+      llmOptionsContainer.style.display = this.checked ? 'block' : 'none';
+    });
+    
+    // Update LLM model options based on provider selection
+    document.getElementById('llmProvider').addEventListener('change', function() {
+      const provider = this.value;
+      const modelSelect = document.getElementById('llmModel');
+      
+      // Clear existing options
+      modelSelect.innerHTML = '';
+      
+      if (provider === 'openai') {
+        // Add OpenAI models
+        const openaiModels = [
+          { value: 'gpt-4o', text: 'GPT-4o (OpenAI)' },
+          { value: 'gpt-3.5-turbo', text: 'GPT-3.5 Turbo (OpenAI)' }
+        ];
+        
+        openaiModels.forEach(model => {
+          const option = document.createElement('option');
+          option.value = model.value;
+          option.textContent = model.text;
+          modelSelect.appendChild(option);
+        });
+      } else if (provider === 'ollama') {
+        // Add Ollama models
+        const ollamaModels = [
+          { value: 'llama3.3', text: 'Llama 3.3 (Ollama)' },
+          { value: 'llama3', text: 'Llama 3 (Ollama)' }
+        ];
+        
+        ollamaModels.forEach(model => {
+          const option = document.createElement('option');
+          option.value = model.value;
+          option.textContent = model.text;
+          modelSelect.appendChild(option);
+        });
+      }
+    });
+    
+    // File selected via file input
+    fileInput.addEventListener('change', function() {
+      if (this.files[0]) {
+        showFile(this.files[0]);
+      }
+    });
+    
+    // Drag and drop events
+    dragArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dragArea.classList.add('active');
+    });
+    
+    dragArea.addEventListener('dragleave', () => {
+      dragArea.classList.remove('active');
+    });
+    
+    dragArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dragArea.classList.remove('active');
+      
+      if (e.dataTransfer.files.length) {
+        fileInput.files = e.dataTransfer.files;
+        showFile(e.dataTransfer.files[0]);
+      }
+    });
+    
+    // Remove selected file
+    removeFile.addEventListener('click', () => {
+      fileInput.value = '';
+      dragArea.style.display = 'block';
+      fileInfo.style.display = 'none';
+    });
+    
+    // Show file info
+    function showFile(file) {
+      fileName.textContent = file.name;
+      dragArea.style.display = 'none';
+      fileInfo.style.display = 'block';
+    }
+    // Socket.io connection and scanner output handling
+    const socket = io();
+    let scanSessionId = null;
+    let scanInProgress = false;
+    let llmEnhancementComplete = false;
+    let reportGenerationComplete = false;
+    let reportEditorUrl = null;
+    let scanModal = null;
+    
+    // Check for active scan in localStorage
+    function checkForActiveScan() {
+      const activeScanData = localStorage.getItem('activeScan');
+      if (activeScanData) {
+        try {
+          const scanData = JSON.parse(activeScanData);
+          if (scanData && scanData.sessionId) {
+            console.log('Found active scan:', scanData);
+            scanSessionId = scanData.sessionId;
+            scanInProgress = true;
+            
+            // Join the scan session
+            socket.emit('join-scan-session', scanSessionId);
+            
+            // Show the modal with saved state
+            scanModal = new bootstrap.Modal(document.getElementById('scannerModal'));
+            
+            // Update modal title if available
+            if (scanData.title) {
+              document.getElementById('scannerModalLabel').textContent = `Scanner Progress: ${scanData.title}`;
+            }
+            
+            // Restore output from sessionStorage if available
+            const configOutput = sessionStorage.getItem('configOutput');
+            const scanOutput = sessionStorage.getItem('scanOutput');
+            const reportOutput = sessionStorage.getItem('reportOutput');
+            
+            if (configOutput) document.getElementById('configOutput').textContent = configOutput;
+            if (scanOutput) document.getElementById('scanOutput').textContent = scanOutput;
+            if (reportOutput) document.getElementById('reportOutput').textContent = reportOutput;
+            
+            scanModal.show();
+            return true;
+          }
+        } catch (e) {
+          console.error('Error parsing active scan data:', e);
+          localStorage.removeItem('activeScan');
+          sessionStorage.removeItem('configOutput');
+          sessionStorage.removeItem('scanOutput');
+          sessionStorage.removeItem('reportOutput');
+        }
+      }
+      return false;
+    }
+    
+    // Form submission handling
+    const scanForm = document.querySelector('form');
+    scanForm.addEventListener('submit', function(e) {
+      // Only prevent default if all required fields are filled
+      const title = document.getElementById('title').value;
+      const targetUrl = document.getElementById('targetUrl').value;
+      const fileInput = document.getElementById('swaggerFile');
+      
+      if (title && targetUrl && fileInput.files.length > 0) {
+        e.preventDefault();
+        startScan();
+      }
+    });
+    
+    // Check for active scan when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+      checkForActiveScan();
+      setupScanControlButtons();
+    });
+    
+    function setupScanControlButtons() {
+      // Set up pause/resume button
+      const pauseResumeBtn = document.getElementById('pauseResumeBtn');
+      pauseResumeBtn.addEventListener('click', function() {
+        if (pauseResumeBtn.textContent === 'Pause') {
+          socket.emit('pause-scan', scanSessionId);
+        } else {
+          socket.emit('resume-scan', scanSessionId);
+        }
+      });
+      
+      // Set up stop button
+      const stopScanBtn = document.getElementById('stopScanBtn');
+      stopScanBtn.addEventListener('click', function() {
+        if (confirm('Are you sure you want to stop the scan? This action cannot be undone.')) {
+          socket.emit('stop-scan', scanSessionId);
+        }
+      });
+    }
+    
+    function checkForActiveScan() {
+      // Check if there's an active scan in localStorage
+      const activeScan = localStorage.getItem('activeScan');
+      if (activeScan) {
+        try {
+          const scanData = JSON.parse(activeScan);
+          scanSessionId = scanData.sessionId;
+          scanInProgress = true;
+          
+          // Join the scan session
+          socket.emit('join-scan-session', scanSessionId);
+          
+          // Update form fields with saved data
+          if (scanData.title) document.getElementById('title').value = scanData.title;
+          if (scanData.targetUrl) document.getElementById('targetUrl').value = scanData.targetUrl;
+          
+          // Update modal title
+          document.getElementById('scannerModalLabel').textContent = `Scanner Progress: ${scanData.title || 'Untitled Scan'}`;
+          
+          // Restore outputs from sessionStorage
+          const configOutput = sessionStorage.getItem('configOutput');
+          const scanOutput = sessionStorage.getItem('scanOutput');
+          const reportOutput = sessionStorage.getItem('reportOutput');
+          
+          if (configOutput) document.getElementById('configOutput').textContent = configOutput;
+          if (scanOutput) document.getElementById('scanOutput').textContent = scanOutput;
+          if (reportOutput) document.getElementById('reportOutput').textContent = reportOutput;
+          
+          // Restore status badges
+          const configStatus = sessionStorage.getItem('configStatus');
+          const scanStatus = sessionStorage.getItem('scanStatus');
+          const reportStatus = sessionStorage.getItem('reportStatus');
+          
+          if (configStatus) {
+            document.getElementById('configStatus').textContent = configStatus;
+            document.getElementById('configStatus').className = configStatus === 'Completed' ? 'badge bg-success' : 
+                                                             configStatus === 'In Progress' ? 'badge bg-info' : 
+                                                             configStatus === 'Failed' ? 'badge bg-danger' : 'badge bg-secondary';
+          }
+          
+          if (scanStatus) {
+            document.getElementById('scanStatus').textContent = scanStatus;
+            document.getElementById('scanStatus').className = scanStatus === 'Completed' ? 'badge bg-success' : 
+                                                           scanStatus === 'In Progress' ? 'badge bg-info' : 
+                                                           scanStatus === 'Failed' ? 'badge bg-danger' : 'badge bg-secondary';
+          }
+          
+          if (reportStatus) {
+            document.getElementById('reportStatus').textContent = reportStatus;
+            document.getElementById('reportStatus').className = reportStatus === 'Completed' ? 'badge bg-success' : 
+                                                             reportStatus === 'In Progress' ? 'badge bg-info' : 
+                                                             reportStatus === 'Failed' ? 'badge bg-danger' : 'badge bg-secondary';
+          }
+          
+          // Restore progress bar
+          const progress = sessionStorage.getItem('scanProgress');
+          if (progress) {
+            document.getElementById('scanProgress').style.width = progress;
+            document.getElementById('scanProgress').setAttribute('aria-valuenow', parseInt(progress));
+          }
+          
+          // Check if report button should be visible
+          if (reportStatus === 'Completed' && scanData.scanId) {
+            const viewReportBtn = document.getElementById('viewReportBtn');
+            viewReportBtn.href = `/results/${scanData.scanId}`;
+            viewReportBtn.style.display = 'inline-block';
+          }
+          
+          // Show the modal if it was visible before
+          const modalVisible = sessionStorage.getItem('modalVisible');
+          if (modalVisible === 'true') {
+            scanModal = new bootstrap.Modal(document.getElementById('scannerModal'));
+            scanModal.show();
+          }
+          
+          // Restore scan control buttons state
+          const scanPaused = sessionStorage.getItem('scanPaused');
+          if (scanData.status === 'running' || scanData.status === 'paused') {
+            document.getElementById('pauseResumeBtn').style.display = 'inline-block';
+            document.getElementById('stopScanBtn').style.display = 'inline-block';
+            
+            if (scanPaused === 'true' || scanData.status === 'paused') {
+              document.getElementById('pauseResumeBtn').textContent = 'Resume';
+              document.getElementById('pauseResumeBtn').classList.remove('btn-warning');
+              document.getElementById('pauseResumeBtn').classList.add('btn-success');
+            } else {
+              document.getElementById('pauseResumeBtn').textContent = 'Pause';
+              document.getElementById('pauseResumeBtn').classList.remove('btn-success');
+              document.getElementById('pauseResumeBtn').classList.add('btn-warning');
+            }
+          } else {
+            document.getElementById('pauseResumeBtn').style.display = 'none';
+            document.getElementById('stopScanBtn').style.display = 'none';
+          }
+          
+          console.log('Restored active scan session:', scanSessionId);
+        } catch (error) {
+          console.error('Error restoring active scan:', error);
+          localStorage.removeItem('activeScan');
+          sessionStorage.removeItem('configOutput');
+          sessionStorage.removeItem('scanOutput');
+          sessionStorage.removeItem('reportOutput');
+          sessionStorage.removeItem('configStatus');
+          sessionStorage.removeItem('scanStatus');
+          sessionStorage.removeItem('reportStatus');
+          sessionStorage.removeItem('scanProgress');
+          sessionStorage.removeItem('modalVisible');
+        }
+      }
+    }
+    
+    function startScan() {
+      if (scanInProgress) return;
+      scanInProgress = true;
+      
+      // Reset the enhance status if it exists
+      const enhanceStatus = document.getElementById('enhanceStatus');
+      if (enhanceStatus) {
+        enhanceStatus.className = 'badge bg-secondary';
+        enhanceStatus.textContent = 'Pending';
+      }
+      
+      // Reset the enhance output if it exists
+      const enhanceOutput = document.getElementById('enhanceOutput');
+      if (enhanceOutput) {
+        enhanceOutput.textContent = '';
+      }
+      
+      // Show or hide the enhance card based on LLM enhancement checkbox
+      const useLlmEnhancement = document.getElementById('useLlmEnhancement').checked;
+      const enhanceCard = document.getElementById('enhanceOutput').closest('.card');
+      enhanceCard.style.display = useLlmEnhancement ? 'block' : 'none';
+      
+      // Show scan control buttons
+      document.getElementById('pauseResumeBtn').style.display = 'inline-block';
+      document.getElementById('stopScanBtn').style.display = 'inline-block';
+      document.getElementById('pauseResumeBtn').textContent = 'Pause';
+      document.getElementById('pauseResumeBtn').classList.remove('btn-success');
+      document.getElementById('pauseResumeBtn').classList.add('btn-warning');
+      sessionStorage.setItem('scanPaused', 'false');
+      
+      // Generate a unique session ID
+      scanSessionId = 'scan_' + Date.now();
+      socket.emit('join-scan-session', scanSessionId);
+      
+      // Reset modal content
+      document.getElementById('configOutput').textContent = '';
+      document.getElementById('scanOutput').textContent = '';
+      document.getElementById('reportOutput').textContent = '';
+      document.getElementById('configStatus').textContent = 'Pending';
+      document.getElementById('configStatus').className = 'badge bg-secondary';
+      document.getElementById('scanStatus').textContent = 'Pending';
+      document.getElementById('scanStatus').className = 'badge bg-secondary';
+      document.getElementById('reportStatus').textContent = 'Pending';
+      document.getElementById('reportStatus').className = 'badge bg-secondary';
+      document.getElementById('scanProgress').style.width = '0%';
+      document.getElementById('viewReportBtn').style.display = 'none';
+      
+      // Get scan title for display
+      const title = document.getElementById('title').value || 'Untitled Scan';
+      document.getElementById('scannerModalLabel').textContent = `Scanner Progress: ${title}`;
+      
+      // Save scan info to localStorage
+      const scanData = {
+        sessionId: scanSessionId,
+        title: title,
+        targetUrl: document.getElementById('targetUrl').value,
+        startTime: new Date().toISOString()
+      };
+      localStorage.setItem('activeScan', JSON.stringify(scanData));
+      
+      // Show the modal
+      scanModal = new bootstrap.Modal(document.getElementById('scannerModal'));
+      scanModal.show();
+      
+      // Submit the form via AJAX
+      const formData = new FormData(scanForm);
+      
+      // Add session ID to the form data
+      formData.append('sessionId', scanSessionId);
+      
+      fetch('/scan', {
+        method: 'POST',
+        body: formData
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
+        return response.json();
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        // Error handling will be done via socket events
+      });
+    }
+    
+    // Socket event listeners
+    socket.on('scanner-output', function(data) {
+      const outputElement = document.getElementById(`${data.type}Output`);
+      if (outputElement) {
+        // Append the new output
+        outputElement.textContent += data.data;
+        // Auto-scroll to bottom
+        outputElement.scrollTop = outputElement.scrollHeight;
+        
+        // Save output to sessionStorage for persistence
+        sessionStorage.setItem(`${data.type}Output`, outputElement.textContent);
+        
+        // Check for stop-related messages in the output
+        if (data.data.includes('Stopping scan') || data.data.includes('scan stopped')) {
+          // Update the stop button to reflect that the stop request is being processed
+          const stopBtn = document.getElementById('stopScanBtn');
+          stopBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Stopping...';
+          stopBtn.disabled = true;
+        }
+      }
+    });
+    
+    socket.on('scan-control-response', function(data) {
+      console.log('Scanner control response:', data);
+      
+      // Handle stop scan response
+      if (data.action === 'stop') {
+        const stopBtn = document.getElementById('stopScanBtn');
+        
+        if (data.success) {
+          // Update button to show success state
+          stopBtn.innerHTML = '<i class="bi bi-check-circle"></i> Stopped';
+          stopBtn.className = 'btn btn-outline-danger';
+          
+          // Add message to scan output
+          const scanOutput = document.getElementById('scanOutput');
+          scanOutput.textContent += '\n[Scan successfully stopped at ' + new Date().toLocaleTimeString() + ']\n';
+          scanOutput.scrollTop = scanOutput.scrollHeight;
+        } else {
+          // Update button to show error state
+          stopBtn.innerHTML = 'Stop Failed';
+          stopBtn.disabled = false;
+          
+          // Add error message to scan output
+          const scanOutput = document.getElementById('scanOutput');
+          scanOutput.textContent += '\n[Failed to stop scan: ' + (data.error || 'Unknown error') + ']\n';
+          scanOutput.scrollTop = scanOutput.scrollHeight;
+        }
+      }
+      
+      if (!data.success) {
+        alert(`Failed to ${data.action} scan: ${data.message}`);
+      }
+    });
+    
+    // Handle scan session state updates
+    socket.on('scan-session-state', function(sessionData) {
+      console.log('Received session state:', sessionData);
+      
+      // Show or hide scan control buttons based on session status
+      if (sessionData.status === 'running' || sessionData.status === 'paused') {
+        document.getElementById('pauseResumeBtn').style.display = 'inline-block';
+        document.getElementById('stopScanBtn').style.display = 'inline-block';
+        
+        if (sessionData.status === 'paused') {
+          document.getElementById('pauseResumeBtn').textContent = 'Resume';
+          document.getElementById('pauseResumeBtn').classList.remove('btn-warning');
+          document.getElementById('pauseResumeBtn').classList.add('btn-success');
+          sessionStorage.setItem('scanPaused', 'true');
+        } else {
+          document.getElementById('pauseResumeBtn').textContent = 'Pause';
+          document.getElementById('pauseResumeBtn').classList.remove('btn-success');
+          document.getElementById('pauseResumeBtn').classList.add('btn-warning');
+          sessionStorage.setItem('scanPaused', 'false');
+        }
+      } else {
+        document.getElementById('pauseResumeBtn').style.display = 'none';
+        document.getElementById('stopScanBtn').style.display = 'none';
+      }
+      
+      // Update UI based on session state
+      if (sessionData.configOutput) {
+        const configOutput = document.getElementById('configOutput');
+        configOutput.textContent = sessionData.configOutput;
+        configOutput.scrollTop = configOutput.scrollHeight;
+        sessionStorage.setItem('configOutput', sessionData.configOutput);
+      }
+      
+      if (sessionData.scanOutput) {
+        const scanOutput = document.getElementById('scanOutput');
+        scanOutput.textContent = sessionData.scanOutput;
+        scanOutput.scrollTop = scanOutput.scrollHeight;
+        sessionStorage.setItem('scanOutput', sessionData.scanOutput);
+      }
+      
+      if (sessionData.reportOutput) {
+        const reportOutput = document.getElementById('reportOutput');
+        reportOutput.textContent = sessionData.reportOutput;
+        reportOutput.scrollTop = reportOutput.scrollHeight;
+        sessionStorage.setItem('reportOutput', sessionData.reportOutput);
+      }
+      
+      // Update progress based on current step
+      if (sessionData.currentStep === 'config') {
+        document.getElementById('configStatus').className = 'badge bg-info';
+        document.getElementById('configStatus').textContent = 'In Progress';
+        document.getElementById('scanProgress').style.width = '10%';
+      } else if (sessionData.currentStep === 'scan') {
+        document.getElementById('configStatus').className = 'badge bg-success';
+        document.getElementById('configStatus').textContent = 'Completed';
+        document.getElementById('scanStatus').className = 'badge bg-info';
+        document.getElementById('scanStatus').textContent = 'In Progress';
+        document.getElementById('scanProgress').style.width = '40%';
+      } else if (sessionData.currentStep === 'report') {
+        document.getElementById('configStatus').className = 'badge bg-success';
+        document.getElementById('configStatus').textContent = 'Completed';
+        document.getElementById('scanStatus').className = 'badge bg-success';
+        document.getElementById('scanStatus').textContent = 'Completed';
+        document.getElementById('reportStatus').className = 'badge bg-info';
+        document.getElementById('reportStatus').textContent = 'In Progress';
+        document.getElementById('scanProgress').style.width = '70%';
+      }
+      
+      // If scan is complete, update UI accordingly
+      if (sessionData.status === 'complete') {
+        document.getElementById('configStatus').className = 'badge bg-success';
+        document.getElementById('configStatus').textContent = 'Completed';
+        document.getElementById('scanStatus').className = 'badge bg-success';
+        document.getElementById('scanStatus').textContent = 'Completed';
+        document.getElementById('reportStatus').className = 'badge bg-success';
+        document.getElementById('reportStatus').textContent = 'Completed';
+        document.getElementById('scanProgress').style.width = '100%';
+        
+        // Show view report button
+        if (sessionData.reportPath && sessionData.scanId) {
+          const viewReportBtn = document.getElementById('viewReportBtn');
+          viewReportBtn.href = `/results/${sessionData.scanId}`;
+          viewReportBtn.style.display = 'inline-block';
+          
+          // Update localStorage with scan ID for report access
+          const activeScan = localStorage.getItem('activeScan');
+          if (activeScan) {
+            const scanData = JSON.parse(activeScan);
+            scanData.scanId = sessionData.scanId;
+            scanData.reportPath = sessionData.reportPath;
+            localStorage.setItem('activeScan', JSON.stringify(scanData));
+          }
+          
+          // Clear active scan from localStorage after a delay to allow viewing the report
+          setTimeout(() => {
+            localStorage.removeItem('activeScan');
+            sessionStorage.removeItem('configOutput');
+            sessionStorage.removeItem('scanOutput');
+            sessionStorage.removeItem('reportOutput');
+            sessionStorage.removeItem('configStatus');
+            sessionStorage.removeItem('scanStatus');
+            sessionStorage.removeItem('reportStatus');
+            sessionStorage.removeItem('scanProgress');
+            sessionStorage.removeItem('modalVisible');
+            scanInProgress = false;
+          }, 60000); // Clear after 1 minute
+        }
+      }
+      
+      // If there was an error, show it
+      if (sessionData.status === 'error') {
+        document.getElementById('reportOutput').textContent += `\nError: ${sessionData.error}`;
+        document.getElementById('reportStatus').className = 'badge bg-danger';
+        document.getElementById('reportStatus').textContent = 'Failed';
+        
+        // Keep error state for a while to allow user to see it
+        setTimeout(() => {
+          localStorage.removeItem('activeScan');
+          sessionStorage.removeItem('configOutput');
+          sessionStorage.removeItem('scanOutput');
+          sessionStorage.removeItem('reportOutput');
+          sessionStorage.removeItem('configStatus');
+          sessionStorage.removeItem('scanStatus');
+          sessionStorage.removeItem('reportStatus');
+          sessionStorage.removeItem('scanProgress');
+          sessionStorage.removeItem('modalVisible');
+          scanInProgress = false;
+        }, 300000); // Clear after 5 minutes
+      }
+    });
+    
+    socket.on('scanner-status', function(data) {
+      console.log('Scanner status update:', data);
+      
+      // Handle special case for enhance status
+      if (data.type === 'enhance') {
+        const enhanceStatus = document.getElementById('enhanceStatus');
+        if (enhanceStatus) {
+          enhanceStatus.className = data.success ? 'badge bg-success' : 'badge bg-danger';
+          enhanceStatus.textContent = data.success ? (data.stage === 'complete' ? 'Completed' : 'Running') : 'Error';
+        }
+        
+        // Update enhance output
+        const enhanceOutput = document.getElementById('enhanceOutput');
+        if (enhanceOutput && data.output) {
+          enhanceOutput.textContent += data.output + '\n';
+          enhanceOutput.scrollTop = enhanceOutput.scrollHeight;
+        }
+        
+        // Mark LLM enhancement as complete if stage is complete
+        if (data.success && data.stage === 'complete') {
+          llmEnhancementComplete = true;
+        }
+        
+        return;
+      }
+      
+      // Handle special case for prepare-report status
+      if (data.type === 'prepare-report') {
+        const reportStatus = document.getElementById('reportStatus');
+        if (reportStatus) {
+          reportStatus.className = data.success ? 'badge bg-success' : 'badge bg-danger';
+          reportStatus.textContent = data.success ? (data.stage === 'complete' ? 'Completed' : 'Running') : 'Error';
+        }
+        
+        // Update report output
+        const reportOutput = document.getElementById('reportOutput');
+        if (reportOutput && data.output) {
+          reportOutput.textContent += data.output + '\n';
+          reportOutput.scrollTop = reportOutput.scrollHeight;
+        }
+        
+        // Mark report generation as complete if stage is complete
+        if (data.success && data.stage === 'complete') {
+          reportGenerationComplete = true;
+          
+          // Set the report editor URL if scanId is available
+          if (data.scanId) {
+            reportEditorUrl = `/report-editor/editor/${data.scanId}`;
+            console.log('Report editor URL set to:', reportEditorUrl);
+          }
+        }
+        
+        return;
+      }
+      
+      const statusElement = document.getElementById(`${data.type.split('-')[0]}Status`);
+      
+      // Handle scan control status updates
+      if (data.type === 'scan-paused') {
+        document.getElementById('pauseResumeBtn').textContent = 'Resume';
+        document.getElementById('pauseResumeBtn').classList.remove('btn-warning');
+        document.getElementById('pauseResumeBtn').classList.add('btn-success');
+        sessionStorage.setItem('scanPaused', 'true');
+      } else if (data.type === 'scan-resumed') {
+        document.getElementById('pauseResumeBtn').textContent = 'Pause';
+        document.getElementById('pauseResumeBtn').classList.remove('btn-success');
+        document.getElementById('pauseResumeBtn').classList.add('btn-warning');
+        sessionStorage.setItem('scanPaused', 'false');
+      } else if (data.type === 'scan-stopped') {
+        document.getElementById('pauseResumeBtn').style.display = 'none';
+        document.getElementById('stopScanBtn').style.display = 'none';
+        sessionStorage.removeItem('scanPaused');
+      }
+      
+      if (statusElement) {
+        if (data.success) {
+          statusElement.textContent = 'Completed';
+          statusElement.className = 'badge bg-success';
+        } else {
+          statusElement.textContent = 'Failed';
+          statusElement.className = 'badge bg-danger';
+        }
+      }
+      
+      // Update progress bar
+      updateProgressBar();
+      
+      // If report is complete, show the view report button
+      if (data.type === 'report-complete' && data.success) {
+        const viewReportBtn = document.getElementById('viewReportBtn');
+        // Get the scan ID from the session status or from the data
+        const activeScan = JSON.parse(localStorage.getItem('activeScan') || '{}');
+        const scanId = data.scanId || (activeScan ? activeScan.scanId : null);
+        
+        if (scanId) {
+          console.log(`Setting report link for scan ID: ${scanId}`);
+          viewReportBtn.href = `/results/${scanId}`;
+          viewReportBtn.style.display = 'inline-block';
+          // Store the report path for later use
+          localStorage.setItem('lastReportPath', data.reportPath || `/reports/report_${scanId}.html`);
+        } else {
+          console.error('No scan ID available for report link');
+          // Try to get the report path directly
+          if (data.reportPath) {
+            viewReportBtn.href = data.reportPath;
+            viewReportBtn.style.display = 'inline-block';
+            localStorage.setItem('lastReportPath', data.reportPath);
+          }
+        }
+        
+        scanInProgress = false;
+        
+        // Don't clear storage immediately to allow viewing the report
+        // We'll keep the scan info for a while
+      }
+      
+      // If any step fails, mark scan as not in progress and clear storage
+      if (!data.success) {
+        scanInProgress = false;
+        localStorage.removeItem('activeScan');
+        sessionStorage.removeItem('configOutput');
+        sessionStorage.removeItem('scanOutput');
+        sessionStorage.removeItem('reportOutput');
+      }
+    });
+    
+    function updateProgressBar() {
+      const configStatus = document.getElementById('configStatus').textContent;
+      const scanStatus = document.getElementById('scanStatus').textContent;
+      const reportStatus = document.getElementById('reportStatus').textContent;
+      
+      let progress = 0;
+      
+      if (configStatus === 'Completed') progress += 33;
+      if (scanStatus === 'Completed') progress += 33;
+      if (reportStatus === 'Completed') progress += 34;
+      
+      document.getElementById('scanProgress').style.width = `${progress}%`;
+      document.getElementById('scanProgress').setAttribute('aria-valuenow', progress);
+    }
+    
+    // Handle modal close event
+    document.getElementById('scannerModal').addEventListener('hidden.bs.modal', function() {
+      // Check if both LLM enhancement and report generation are complete
+      if (llmEnhancementComplete && reportGenerationComplete && reportEditorUrl) {
+        console.log('Redirecting to report editor:', reportEditorUrl);
+        // Redirect to the report editor page
+        window.location.href = reportEditorUrl;
+        return;
+      }
+      
+      // If scan is still in progress, show a notification
+      if (scanInProgress) {
+        const notification = document.createElement('div');
+        notification.className = 'alert alert-info alert-dismissible fade show position-fixed bottom-0 end-0 m-3';
+        notification.innerHTML = `
+          <strong>Scan in Progress</strong> Your scan is still running in the background.
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          <div class="mt-2">
+            <button class="btn btn-sm btn-primary show-scan-btn">Show Progress</button>
+          </div>
+        `;
+        document.body.appendChild(notification);
+        
+        // Add event listener to show scan button
+        notification.querySelector('.show-scan-btn').addEventListener('click', function() {
+          scanModal.show();
+          notification.remove();
+        });
+        
+        // Auto-dismiss after 10 seconds
+        setTimeout(() => {
+          if (notification.parentNode) {
+            notification.remove();
+          }
+        }, 10000);
+      }
+    });
+    
+    // Handle page unload to save state
+    window.addEventListener('beforeunload', function(e) {
+      if (scanInProgress) {
+        // Save current outputs to sessionStorage for restoration
+        sessionStorage.setItem('configOutput', document.getElementById('configOutput').textContent);
+        sessionStorage.setItem('scanOutput', document.getElementById('scanOutput').textContent);
+        sessionStorage.setItem('reportOutput', document.getElementById('reportOutput').textContent);
+        
+        // Save current status badges
+        sessionStorage.setItem('configStatus', document.getElementById('configStatus').textContent);
+        sessionStorage.setItem('scanStatus', document.getElementById('scanStatus').textContent);
+        sessionStorage.setItem('reportStatus', document.getElementById('reportStatus').textContent);
+        
+        // Save progress bar state
+        sessionStorage.setItem('scanProgress', document.getElementById('scanProgress').style.width);
+        
+        // Save modal visibility state
+        sessionStorage.setItem('modalVisible', document.getElementById('scannerModal').classList.contains('show') ? 'true' : 'false');
+      }
+    });
+    
+    // Add a button to clear active scan (for testing)
+    const clearScanBtn = document.createElement('button');
+    clearScanBtn.className = 'btn btn-sm btn-outline-danger mt-3 ms-2';
+    clearScanBtn.textContent = 'Clear Active Scan';
+    clearScanBtn.addEventListener('click', function() {
+      localStorage.removeItem('activeScan');
+      sessionStorage.removeItem('configOutput');
+      sessionStorage.removeItem('scanOutput');
+      sessionStorage.removeItem('reportOutput');
+      sessionStorage.removeItem('configStatus');
+      sessionStorage.removeItem('scanStatus');
+      sessionStorage.removeItem('reportStatus');
+      sessionStorage.removeItem('scanProgress');
+      sessionStorage.removeItem('modalVisible');
+      scanInProgress = false;
+      alert('Active scan cleared');
+    });
+    document.querySelector('.modal-footer').appendChild(clearScanBtn);
+  });
+</script>
+
+<style>
+  .output-pre {
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    padding: 10px;
+    max-height: 200px;
+    overflow-y: auto;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  
+  .modal-dialog {
+    max-width: 800px;
+  }
+  
+  .progress {
+    height: 20px;
+  }
+</style>

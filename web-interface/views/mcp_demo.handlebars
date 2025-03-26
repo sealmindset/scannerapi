@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP Demo - API Security Scanner</title>
+    <link rel="stylesheet" href="/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/css/styles.css">
+    <style>
+        .code-block {
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            padding: 15px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .tool-card {
+            margin-bottom: 20px;
+            border-left: 4px solid #007bff;
+        }
+        .result-container {
+            margin-top: 20px;
+            display: none;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .loading-spinner {
+            width: 3rem;
+            height: 3rem;
+        }
+    </style>
+</head>
+<body>
+    {{> navbar}}
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-12">
+                <h1>Model Context Protocol (MCP) Demo</h1>
+                <p class="lead">
+                    This page demonstrates how the Model Context Protocol (MCP) can be used to enhance LLM functionality
+                    by providing standardized access to prompt templates and other data sources.
+                </p>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>MCP Server Information</h5>
+                    </div>
+                    <div class="card-body">
+                        <button id="initialize-btn" class="btn btn-primary">Initialize Connection</button>
+                        <div id="initialize-result" class="result-container">
+                            <h6>Server Capabilities:</h6>
+                            <div class="code-block" id="initialize-code"></div>
+                        </div>
+                        <div id="initialize-loading" class="loading">
+                            <div class="spinner-border loading-spinner" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <h5>Available Tools</h5>
+                    </div>
+                    <div class="card-body">
+                        <button id="list-tools-btn" class="btn btn-primary">List Tools</button>
+                        <div id="tools-result" class="result-container">
+                            <h6>Available Tools:</h6>
+                            <div id="tools-container"></div>
+                        </div>
+                        <div id="tools-loading" class="loading">
+                            <div class="spinner-border loading-spinner" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Prompt Templates</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="category-select" class="form-label">Category:</label>
+                            <select id="category-select" class="form-select">
+                                <option value="all">All Categories</option>
+                                <option value="scan">Scan</option>
+                                <option value="report">Report</option>
+                                <option value="vulnerability">Vulnerability</option>
+                            </select>
+                        </div>
+                        <button id="list-templates-btn" class="btn btn-primary">List Templates</button>
+                        <div id="templates-result" class="result-container">
+                            <h6>Templates:</h6>
+                            <div class="code-block" id="templates-code"></div>
+                        </div>
+                        <div id="templates-loading" class="loading">
+                            <div class="spinner-border loading-spinner" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <h5>Search Templates</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="search-query" class="form-label">Search Query:</label>
+                            <input type="text" id="search-query" class="form-control" placeholder="Enter search terms">
+                        </div>
+                        <button id="search-templates-btn" class="btn btn-primary">Search</button>
+                        <div id="search-result" class="result-container">
+                            <h6>Search Results:</h6>
+                            <div class="code-block" id="search-code"></div>
+                        </div>
+                        <div id="search-loading" class="loading">
+                            <div class="spinner-border loading-spinner" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>LLM Integration Example</h5>
+                    </div>
+                    <div class="card-body">
+                        <p>
+                            This example shows how an LLM can use MCP to access prompt templates and other data.
+                            Enter a prompt below to simulate an LLM request:
+                        </p>
+                        <div class="mb-3">
+                            <label for="llm-prompt" class="form-label">LLM Prompt:</label>
+                            <textarea id="llm-prompt" class="form-control" rows="3" placeholder="Example: Generate a security report for API endpoint /users/login"></textarea>
+                        </div>
+                        <button id="llm-simulate-btn" class="btn btn-primary">Simulate LLM Request</button>
+                        <div id="llm-result" class="result-container">
+                            <h6>LLM Response:</h6>
+                            <div class="code-block" id="llm-code"></div>
+                        </div>
+                        <div id="llm-loading" class="loading">
+                            <div class="spinner-border loading-spinner" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/jquery-3.6.0.min.js"></script>
+    <script src="/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // MCP Client implementation
+        class MCPClient {
+            constructor(endpoint) {
+                this.endpoint = endpoint;
+                this.initialized = false;
+                this.requestId = 1;
+                this.capabilities = null;
+            }
+
+            getNextRequestId() {
+                return this.requestId++;
+            }
+
+            async sendRequest(method, params = {}) {
+                const request = {
+                    jsonrpc: '2.0',
+                    id: this.getNextRequestId(),
+                    method,
+                    params
+                };
+
+                try {
+                    const response = await fetch(this.endpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(request)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    
+                    if (data.error) {
+                        throw new Error(`MCP error: ${data.error.message}`);
+                    }
+                    
+                    return data.result;
+                } catch (error) {
+                    console.error('MCP client error:', error);
+                    throw error;
+                }
+            }
+
+            async initialize() {
+                if (this.initialized) {
+                    return this.capabilities;
+                }
+
+                try {
+                    const result = await this.sendRequest('initialize', {
+                        protocolVersion: '1.0'
+                    });
+                    
+                    this.capabilities = result.capabilities;
+                    this.initialized = true;
+                    return result;
+                } catch (error) {
+                    console.error('Failed to initialize MCP connection:', error);
+                    throw error;
+                }
+            }
+
+            async listTools() {
+                if (!this.initialized) {
+                    await this.initialize();
+                }
+                
+                return this.sendRequest('listTools');
+            }
+
+            async callTool(toolName, args = {}) {
+                if (!this.initialized) {
+                    await this.initialize();
+                }
+                
+                return this.sendRequest('callTool', {
+                    toolName,
+                    arguments: args
+                });
+            }
+
+            async getPromptTemplate(id) {
+                return this.callTool('getPromptTemplate', { id });
+            }
+
+            async listPromptTemplates(category = 'all', limit = 20) {
+                return this.callTool('listPromptTemplates', { category, limit });
+            }
+
+            async searchPromptTemplates(query) {
+                return this.callTool('searchPromptTemplates', { query });
+            }
+        }
+
+        // Create MCP client instance
+        const mcpClient = new MCPClient('/api/mcp/mcp');
+
+        // Helper function to show loading indicator
+        function showLoading(id) {
+            $(`#${id}-loading`).show();
+            $(`#${id}-result`).hide();
+        }
+
+        // Helper function to hide loading indicator and show results
+        function hideLoading(id) {
+            $(`#${id}-loading`).hide();
+            $(`#${id}-result`).show();
+        }
+
+        // Initialize button click handler
+        $('#initialize-btn').click(async function() {
+            showLoading('initialize');
+            try {
+                const result = await mcpClient.initialize();
+                $('#initialize-code').text(JSON.stringify(result, null, 2));
+                hideLoading('initialize');
+            } catch (error) {
+                $('#initialize-code').text(`Error: ${error.message}`);
+                hideLoading('initialize');
+            }
+        });
+
+        // List tools button click handler
+        $('#list-tools-btn').click(async function() {
+            showLoading('tools');
+            try {
+                const result = await mcpClient.listTools();
+                $('#tools-container').empty();
+                
+                // Create cards for each tool
+                result.tools.forEach(tool => {
+                    const card = $(`
+                        <div class="card tool-card mb-3">
+                            <div class="card-body">
+                                <h5 class="card-title">${tool.name}</h5>
+                                <p class="card-text">${tool.description}</p>
+                                <h6>Parameters:</h6>
+                                <ul class="list-group list-group-flush">
+                                    ${Object.entries(tool.parameters).map(([name, param]) => 
+                                        `<li class="list-group-item">
+                                            <strong>${name}</strong>: ${param.description} (${param.type})
+                                        </li>`
+                                    ).join('')}
+                                </ul>
+                            </div>
+                        </div>
+                    `);
+                    $('#tools-container').append(card);
+                });
+                
+                hideLoading('tools');
+            } catch (error) {
+                $('#tools-container').html(`<div class="alert alert-danger">Error: ${error.message}</div>`);
+                hideLoading('tools');
+            }
+        });
+
+        // List templates button click handler
+        $('#list-templates-btn').click(async function() {
+            showLoading('templates');
+            try {
+                const category = $('#category-select').val();
+                const result = await mcpClient.listPromptTemplates(category);
+                $('#templates-code').text(JSON.stringify(result, null, 2));
+                hideLoading('templates');
+            } catch (error) {
+                $('#templates-code').text(`Error: ${error.message}`);
+                hideLoading('templates');
+            }
+        });
+
+        // Search templates button click handler
+        $('#search-templates-btn').click(async function() {
+            showLoading('search');
+            try {
+                const query = $('#search-query').val();
+                if (!query) {
+                    throw new Error('Search query is required');
+                }
+                
+                const result = await mcpClient.searchPromptTemplates(query);
+                $('#search-code').text(JSON.stringify(result, null, 2));
+                hideLoading('search');
+            } catch (error) {
+                $('#search-code').text(`Error: ${error.message}`);
+                hideLoading('search');
+            }
+        });
+
+        // Simulate LLM request button click handler
+        $('#llm-simulate-btn').click(async function() {
+            showLoading('llm');
+            try {
+                const prompt = $('#llm-prompt').val();
+                if (!prompt) {
+                    throw new Error('Prompt is required');
+                }
+                
+                // Simulate LLM using MCP to access tools and data
+                // This is a simplified example - in a real implementation, 
+                // the LLM would use MCP to access tools and data based on the prompt
+                
+                // First, initialize MCP connection
+                await mcpClient.initialize();
+                
+                // Get available tools
+                const tools = await mcpClient.listTools();
+                
+                // Based on the prompt, determine which tools to use
+                let response = "LLM Response (using MCP):\n\n";
+                
+                if (prompt.toLowerCase().includes('security') || prompt.toLowerCase().includes('scan')) {
+                    // Get scan-related templates
+                    const scanTemplates = await mcpClient.listPromptTemplates('scan');
+                    
+                    // Simulate LLM using the templates
+                    response += "I found relevant security scan templates that I can use:\n\n";
+                    
+                    if (scanTemplates.templates && scanTemplates.templates.length > 0) {
+                        const template = scanTemplates.templates[0];
+                        response += `Using template: ${template.name}\n\n`;
+                        
+                        // Simulate filling in the template
+                        let filledTemplate = template.template;
+                        if (prompt.includes('/')) {
+                            // Extract endpoint from prompt
+                            const endpointMatch = prompt.match(/\/[a-zA-Z0-9/]+/);
+                            if (endpointMatch) {
+                                const endpoint = endpointMatch[0];
+                                filledTemplate = filledTemplate.replace('{{endpoint}}', endpoint);
+                            }
+                        }
+                        
+                        response += filledTemplate + "\n\n";
+                        response += "This response was generated using MCP to access and fill in a prompt template.";
+                    } else {
+                        response += "No relevant templates found. Please create some scan templates first.";
+                    }
+                } else if (prompt.toLowerCase().includes('report')) {
+                    // Get report-related templates
+                    const reportTemplates = await mcpClient.listPromptTemplates('report');
+                    
+                    // Simulate LLM using the templates
+                    response += "I found relevant report templates that I can use:\n\n";
+                    
+                    if (reportTemplates.templates && reportTemplates.templates.length > 0) {
+                        const template = reportTemplates.templates[0];
+                        response += `Using template: ${template.name}\n\n`;
+                        
+                        // Simulate filling in the template
+                        let filledTemplate = template.template;
+                        filledTemplate = filledTemplate.replace('{{findings}}', 'Several high and medium severity issues were found.');
+                        
+                        response += filledTemplate + "\n\n";
+                        response += "This response was generated using MCP to access and fill in a prompt template.";
+                    } else {
+                        response += "No relevant templates found. Please create some report templates first.";
+                    }
+                } else {
+                    // Search for relevant templates
+                    const searchResults = await mcpClient.searchPromptTemplates(prompt.split(' ')[0]);
+                    
+                    if (searchResults.results && searchResults.results.length > 0) {
+                        const template = searchResults.results[0];
+                        response += `Found a relevant template: ${template.name}\n\n`;
+                        response += template.template + "\n\n";
+                        response += "This response was generated using MCP to search for and use a relevant prompt template.";
+                    } else {
+                        response += "I couldn't find any relevant templates for your request. Please try a different query or create new templates.";
+                    }
+                }
+                
+                $('#llm-code').text(response);
+                hideLoading('llm');
+            } catch (error) {
+                $('#llm-code').text(`Error: ${error.message}`);
+                hideLoading('llm');
+            }
+        });
+    </script>
+</body>
+</html>

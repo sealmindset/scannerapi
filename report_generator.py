@@ -3,7 +3,8 @@
 Vulnerability Report Generator for Scanner API
 
 This script generates detailed reports from Scanner API scan results in various formats
-(JSON, CSV, HTML).
+(JSON, CSV, HTML). It also supports integration with LLM-based middleware for enhancing
+vulnerability remediation details and descriptions.
 """
 
 import argparse
@@ -13,10 +14,12 @@ import os
 import sys
 import datetime
 import glob
+import importlib.util
 from typing import Dict, List, Any, Optional, Tuple
 import sqlite3
 from pathlib import Path
 import logging
+import subprocess
 
 # Configure logging
 logging.basicConfig(
@@ -63,7 +66,7 @@ def load_scan_results_from_file(scan_id: str) -> Optional[Dict[str, Any]]:
 class ReportGenerator:
     """Generate detailed vulnerability reports from scan results."""
 
-    def __init__(self, scan_id: str, output_format: str, output_path: str, use_direct_file: bool = False):
+    def __init__(self, scan_id: str, output_format: str, output_path: str, use_direct_file: bool = False, input_file: Optional[str] = None):
         """
         Initialize the report generator.
         
@@ -72,6 +75,7 @@ class ReportGenerator:
             output_format: The format of the report (json, csv, html)
             output_path: The path to save the report to
             use_direct_file: Whether to load data directly from JSON file instead of database
+            input_file: Optional specific input file path to use instead of deriving from scan_id
         """
         self.scan_id = scan_id
         self.format = output_format.lower()
@@ -81,6 +85,7 @@ class ReportGenerator:
         self.vulnerabilities = None
         self.use_direct_file = use_direct_file
         self.raw_scan_results = None
+        self.input_file = input_file
         
         # Ensure output directory exists
         output_dir = os.path.dirname(output_path)
@@ -190,10 +195,21 @@ class ReportGenerator:
             
     def _fetch_from_file(self) -> None:
         """Fetch scan data directly from JSON file."""
-        self.raw_scan_results = load_scan_results_from_file(self.scan_id)
-        
+        if self.input_file and os.path.exists(self.input_file):
+            # Load directly from the specified input file
+            logger.info(f"Loading scan data from specified input file: {self.input_file}")
+            try:
+                with open(self.input_file, 'r') as f:
+                    self.raw_scan_results = json.load(f)
+            except Exception as e:
+                logger.error(f"Error loading scan data from input file {self.input_file}: {e}")
+                sys.exit(1)
+        else:
+            # Load using the scan_id to find the file
+            self.raw_scan_results = load_scan_results_from_file(self.scan_id)
+            
         if not self.raw_scan_results:
-            logger.error(f"No scan results file found for scan ID: {self.scan_id}")
+            logger.error(f"No scan results found for scan ID: {self.scan_id}")
             sys.exit(1)
         
         # Extract scan data
@@ -209,22 +225,77 @@ class ReportGenerator:
         self.vulnerabilities = []
         for scanner in self.raw_scan_results.get("scanners", []):
             for finding in scanner.get("findings", []):
-                vuln = {
-                    "scan_id": self.scan_id,
-                    "scanner": scanner.get("name", ""),
-                    "title": finding.get("vulnerability", ""),
-                    "severity": finding.get("severity", ""),
-                    "endpoint": finding.get("endpoint", ""),
-                    "details": finding.get("details", ""),
-                    "request_headers": json.dumps(finding.get("evidence", {}).get("request", {}).get("headers", {})),
-                    "request_body": json.dumps(finding.get("evidence", {}).get("request", {}).get("json_data", {})),
-                    "response_headers": json.dumps(finding.get("evidence", {}).get("response", {}).get("headers", {})),
-                    "response_body": json.dumps(finding.get("evidence", {}).get("response", {}).get("body", {})),
-                    "remediation": finding.get("remediation", "")
-                }
+                # Extract evidence based on vulnerability type
+                evidence = finding.get("evidence", {})
+                
+                # Special handling for Rate-Limited Account Creation evidence
+                if finding.get("vulnerability") == "Rate-Limited Account Creation":
+                    # Format the specialized evidence structure for rate limiting
+                    request_body = {}
+                    response_body = {}
+                    
+                    # Include normal test data
+                    if "normal_test" in evidence:
+                        request_body["normal_test"] = evidence["normal_test"]
+                    
+                    # Include aggressive test data
+                    if "aggressive_test" in evidence:
+                        request_body["aggressive_test"] = evidence["aggressive_test"]
+                    
+                    # Include optimal rate data
+                    if "optimal_rate" in evidence:
+                        response_body["optimal_rate"] = evidence["optimal_rate"]
+                    
+                    # Include example request/response
+                    if "example_request_response" in evidence:
+                        example = evidence["example_request_response"]
+                        if isinstance(example, dict):
+                            if "request" in example:
+                                request_body["example"] = example["request"]
+                            if "response" in example:
+                                response_body["example"] = example["response"]
+                    
+                    vuln = {
+                        "scan_id": self.scan_id,
+                        "scanner": scanner.get("name", ""),
+                        "title": finding.get("vulnerability", ""),
+                        "severity": finding.get("severity", ""),
+                        "endpoint": finding.get("endpoint", ""),
+                        "details": finding.get("details", ""),
+                        "request_headers": json.dumps({}),
+                        "request_body": json.dumps(request_body),
+                        "response_headers": json.dumps({}),
+                        "response_body": json.dumps(response_body),
+                        "remediation": finding.get("remediation", ""),
+                        "risk_assessment": finding.get("risk_assessment", ""),
+                        "impact_analysis": finding.get("impact_analysis", ""),
+                        "real_world_examples": finding.get("real_world_examples", "")
+                    }
+                else:
+                    # Standard evidence processing for other vulnerabilities
+                    vuln = {
+                        "scan_id": self.scan_id,
+                        "scanner": scanner.get("name", ""),
+                        "title": finding.get("vulnerability", ""),
+                        "severity": finding.get("severity", ""),
+                        "endpoint": finding.get("endpoint", ""),
+                        "details": finding.get("details", ""),
+                        "request_headers": json.dumps(evidence.get("request", {}).get("headers", {})),
+                        "request_body": json.dumps(evidence.get("request", {}).get("json_data", {})),
+                        "response_headers": json.dumps(evidence.get("response", {}).get("headers", {})),
+                        "response_body": json.dumps(evidence.get("response", {}).get("body", {})),
+                        "remediation": finding.get("remediation", ""),
+                        "risk_assessment": finding.get("risk_assessment", ""),
+                        "impact_analysis": finding.get("impact_analysis", ""),
+                        "real_world_examples": finding.get("real_world_examples", "")
+                    }
+                # Normalize severity to uppercase for consistent sorting
+                if "severity" in vuln:
+                    vuln["severity"] = vuln["severity"].upper()
                 self.vulnerabilities.append(vuln)
         
         # Sort vulnerabilities by severity
+        # This sorting is used for internal data structures and will be applied to all report formats
         severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4}
         self.vulnerabilities.sort(key=lambda x: severity_order.get(x.get("severity", ""), 999))
         
@@ -303,6 +374,152 @@ class ReportGenerator:
         except IOError as e:
             logger.error(f"Error writing CSV report: {e}")
             sys.exit(1)
+    
+    def _generate_evidence_html(self, vuln: Dict[str, Any]) -> str:
+        """Generate HTML for vulnerability evidence based on vulnerability type.
+        
+        Args:
+            vuln: Vulnerability data dictionary
+            
+        Returns:
+            HTML string for the evidence section
+        """
+        # Check if this is a Rate-Limited Account Creation vulnerability
+        if "Rate-Limited Account Creation" in vuln.get("title", ""):
+            try:
+                # Parse the JSON data from the request and response body fields
+                request_data = json.loads(vuln.get("request_body", "{}"))
+                response_data = json.loads(vuln.get("response_body", "{}"))
+                
+                html = ""
+                
+                # Normal test section
+                if "normal_test" in request_data:
+                    normal_test = request_data["normal_test"]
+                    html += f"""
+                    <div class="section-title">Normal Test Results:</div>
+                    <div class="code-block">
+                        <p>Successful Creations: {normal_test.get('successful_creations', 'N/A')}</p>
+                        <p>Test Count: {normal_test.get('test_count', 'N/A')}</p>
+                        <p>Delay Between Requests: {normal_test.get('delay_between_requests', 'N/A')}</p>
+                        <p>Requests Per Second: {normal_test.get('requests_per_second', 'N/A')}</p>
+                    </div>
+                    """
+                
+                # Aggressive test section
+                if "aggressive_test" in request_data:
+                    aggressive_test = request_data["aggressive_test"]
+                    html += f"""
+                    <div class="section-title">Aggressive Test Results:</div>
+                    <div class="code-block">
+                        <p>Successful Creations: {aggressive_test.get('successful_creations', 'N/A')}</p>
+                        <p>Test Count: {aggressive_test.get('test_count', 'N/A')}</p>
+                        <p>Delay Between Requests: {aggressive_test.get('delay_between_requests', 'N/A')}</p>
+                        <p>Requests Per Second: {aggressive_test.get('requests_per_second', 'N/A')}</p>
+                    </div>
+                    """
+                
+                # Optimal rate section
+                if "optimal_rate" in response_data:
+                    optimal_rate = response_data["optimal_rate"]
+                    html += f"""
+                    <div class="section-title">Optimal Rate Information:</div>
+                    <div class="code-block">
+                        <p>Delay Between Requests: {optimal_rate.get('delay_between_requests', 'N/A')}</p>
+                        <p>Requests Per Second: {optimal_rate.get('requests_per_second', 'N/A')}</p>
+                    </div>
+                    """
+                
+                # Display successful account creations from test details
+                if "optimal_rate" in response_data and "test_details" in response_data["optimal_rate"]:
+                    test_details = response_data["optimal_rate"]["test_details"]
+                    successful_requests = []
+                    failed_requests = []
+                    
+                    # Separate successful and failed requests
+                    for detail in test_details:
+                        if detail.get("status_code") == 200:
+                            successful_requests.append(detail)
+                        else:
+                            failed_requests.append(detail)
+                    
+                    # Show successful account creations
+                    if successful_requests:
+                        html += f"""
+                        <div class="section-title">Successful Account Creations ({len(successful_requests)}):</div>
+                        <div class="code-block">
+                        """
+                        
+                        for i, request in enumerate(successful_requests[:3]):  # Show up to 3 examples
+                            html += f"""
+                            <p><strong>Example {i+1}:</strong></p>
+                            <p>Username: {request.get('username', 'N/A')}</p>
+                            <p>Status Code: <span style="color: green;">{request.get('status_code', 'N/A')}</span></p>
+                            <p>Response Time: {request.get('response_time', 'N/A')} seconds</p>
+                            <hr>
+                            """
+                        
+                        if len(successful_requests) > 3:
+                            html += f"<p>...and {len(successful_requests) - 3} more successful requests</p>"
+                        
+                        html += "</div>"
+                    
+                    # Show failed account creations
+                    if failed_requests:
+                        html += f"""
+                        <div class="section-title">Failed Account Creation Attempts ({len(failed_requests)}):</div>
+                        <div class="code-block">
+                        """
+                        
+                        for i, request in enumerate(failed_requests[:2]):  # Show up to 2 examples
+                            html += f"""
+                            <p><strong>Example {i+1}:</strong></p>
+                            <p>Username: {request.get('username', 'N/A')}</p>
+                            <p>Status Code: <span style="color: red;">{request.get('status_code', 'N/A')}</span></p>
+                            <p>Response Time: {request.get('response_time', 'N/A')} seconds</p>
+                            <hr>
+                            """
+                        
+                        if len(failed_requests) > 2:
+                            html += f"<p>...and {len(failed_requests) - 2} more failed requests</p>"
+                        
+                        html += "</div>"
+                
+                # Example request/response
+                if "example" in request_data or "example" in response_data:
+                    html += f"""
+                    <div class="section-title">Example Request/Response:</div>
+                    <div class="code-block">
+                    """
+                    
+                    if "example" in request_data:
+                        html += f"<p><strong>Request:</strong></p><pre>{json.dumps(request_data['example'], indent=2)}</pre>"
+                    
+                    if "example" in response_data:
+                        html += f"<p><strong>Response:</strong></p><pre>{json.dumps(response_data['example'], indent=2)}</pre>"
+                    
+                    html += "</div>"
+                
+                return html
+            except Exception as e:
+                logger.error(f"Error formatting Rate-Limited Account Creation evidence: {e}")
+                # Fall back to standard evidence display
+                pass
+        
+        # Standard evidence display for other vulnerabilities
+        return f"""
+        <div class="section-title">Request Headers:</div>
+        <div class="code-block">{vuln["request_headers"] or "N/A"}</div>
+        
+        <div class="section-title">Request Body:</div>
+        <div class="code-block">{vuln["request_body"] or "N/A"}</div>
+        
+        <div class="section-title">Response Headers:</div>
+        <div class="code-block">{vuln["response_headers"] or "N/A"}</div>
+        
+        <div class="section-title">Response Body:</div>
+        <div class="code-block">{vuln["response_body"] or "N/A"}</div>
+        """
     
     def _generate_html_report(self) -> None:
         """Generate an HTML report."""
@@ -408,6 +625,13 @@ class ReportGenerator:
             font-weight: bold;
             margin-bottom: 5px;
         }
+        .enhanced-content {
+            background-color: #f0f7ff;
+            border-left: 3px solid #3498db;
+            padding: 10px 15px;
+            margin: 10px 0;
+            line-height: 1.5;
+        }
     </style>
 </head>
 <body>
@@ -445,6 +669,7 @@ class ReportGenerator:
 
                 # Vulnerability summary table
                 for vuln in self.vulnerabilities:
+                    # Ensure severity class is lowercase for CSS styling
                     severity_class = vuln["severity"].lower()
                     f.write(f"""
             <tr>
@@ -462,6 +687,7 @@ class ReportGenerator:
 
                 # Detailed vulnerability findings
                 for i, vuln in enumerate(self.vulnerabilities):
+                    # Ensure severity class is lowercase for CSS styling
                     severity_class = vuln["severity"].lower()
                     f.write(f"""
         <div class="vulnerability {severity_class}">
@@ -480,19 +706,31 @@ class ReportGenerator:
                 <div>{vuln["details"]}</div>
             </div>
             
+            {"" if not vuln.get("risk_assessment") else f'''
+            <div class="section">
+                <div class="section-title">Risk Assessment:</div>
+                <div class="enhanced-content">{vuln["risk_assessment"]}</div>
+            </div>
+            '''}
+            
+            {"" if not vuln.get("impact_analysis") else f'''
+            <div class="section">
+                <div class="section-title">Impact Analysis:</div>
+                <div class="enhanced-content">{vuln["impact_analysis"]}</div>
+            </div>
+            '''}
+            
+            {"" if not vuln.get("real_world_examples") else f'''
+            <div class="section">
+                <div class="section-title">Real-World Examples:</div>
+                <div class="enhanced-content">{vuln["real_world_examples"]}</div>
+            </div>
+            '''}
+            
             <div class="section">
                 <div class="section-title">Results:</div>
-                <div class="section-title">Request Headers:</div>
-                <div class="code-block">{vuln["request_headers"] or "N/A"}</div>
                 
-                <div class="section-title">Request Body:</div>
-                <div class="code-block">{vuln["request_body"] or "N/A"}</div>
-                
-                <div class="section-title">Response Headers:</div>
-                <div class="code-block">{vuln["response_headers"] or "N/A"}</div>
-                
-                <div class="section-title">Response Body:</div>
-                <div class="code-block">{vuln["response_body"] or "N/A"}</div>
+                {self._generate_evidence_html(vuln)}
             </div>
             
             <div class="section">
@@ -502,6 +740,7 @@ class ReportGenerator:
         </div>
 """)
 
+                
                 # HTML footer
                 f.write("""
     </div>
@@ -911,6 +1150,250 @@ def add_jwt_vulnerability_remediations(scan_id: str) -> None:
         logger.error(f"Database error: {e}")
         sys.exit(1)
 
+def import_llm_module(module_path, module_name):
+    """Dynamically import a module from a file path.
+    
+    Args:
+        module_path: Path to the module file
+        module_name: Name to give the imported module
+        
+    Returns:
+        The imported module, or None if import failed
+    """
+    try:
+        spec = importlib.util.spec_from_file_location(module_name, module_path)
+        if not spec or not spec.loader:
+            logger.error(f"Could not load spec for {module_path}")
+            return None
+            
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    except (ImportError, AttributeError) as e:
+        logger.error(f"Error importing {module_path}: {e}")
+        return None
+
+def run_llm_enhancement_pipeline(input_file, output_file, use_remediation=True, use_description=True, 
+                                llm_provider="openai", llm_model=None, api_key=None, ollama_url="http://localhost:11434",
+                                batch_size=5, max_workers=3):
+    """Run the LLM enhancement pipeline on scan results.
+    
+    Args:
+        input_file: Path to the input scan results file
+        output_file: Path to save the enhanced results
+        use_remediation: Whether to enhance remediation details
+        use_description: Whether to enhance vulnerability descriptions
+        llm_provider: LLM provider to use ('openai' or 'ollama')
+        llm_model: Model to use (provider-specific)
+        batch_size: Batch size for processing
+        max_workers: Maximum number of worker threads
+        
+    Returns:
+        Path to the enhanced results file
+    """
+    logger.info(f"Pipeline parameters: input={input_file}, output={output_file}, remediation={use_remediation}, description={use_description}")
+    logger.info(f"LLM config: provider={llm_provider}, model={llm_model}, api_key={'set' if api_key else 'not set'}, ollama_url={ollama_url}, batch_size={batch_size}, max_workers={max_workers}")
+    
+    current_file = input_file
+    temp_files = []
+    
+    try:
+        # Step 1: Enhance remediation if requested
+        if use_remediation:
+            logger.info("Enhancing remediation details with LLM...")
+            remediation_output = f"{os.path.splitext(output_file)[0]}_remediation_enhanced.json"
+            temp_files.append(remediation_output)
+            
+            # Try to import the module
+            llm_remediation_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "llm_remediation_middleware.py")
+            logger.info(f"Looking for remediation middleware at: {llm_remediation_path}")
+            
+            if not os.path.exists(llm_remediation_path):
+                logger.error(f"Remediation middleware file not found: {llm_remediation_path}")
+                print(f"Error: Remediation middleware file not found. Skipping remediation enhancement.")
+                use_remediation = False
+            else:
+                llm_remediation = import_llm_module(llm_remediation_path, "llm_remediation_middleware")
+            
+            if llm_remediation:
+                # Use the imported module
+                logger.info("Using imported llm_remediation_middleware module")
+                
+                # Direct integration without using command-line parsing
+                try:
+                    # Load the configuration
+                    if hasattr(llm_remediation, 'RemediationConfig'):
+                        # Create config directly
+                        config_class = getattr(llm_remediation, 'RemediationConfig')
+                        config_params = {
+                            'llm_provider': llm_provider,
+                            'batch_size': batch_size,
+                            'max_workers': max_workers
+                        }
+                        
+                        # Add provider-specific configuration
+                        if llm_provider == 'openai':
+                            if api_key:
+                                config_params['openai_api_key'] = api_key
+                            if llm_model:
+                                config_params['openai_model'] = llm_model
+                        else:  # ollama
+                            if ollama_url:
+                                config_params['ollama_base_url'] = ollama_url
+                            if llm_model:
+                                config_params['ollama_model'] = llm_model
+                                
+                        config = config_class(**config_params)
+                    else:
+                        # Fall back to the module's load_config function
+                        config = llm_remediation.load_config()
+                    
+                    # Create middleware instance
+                    middleware = llm_remediation.LLMRemediationMiddleware(config)
+                    
+                    # Process the scan results
+                    logger.info(f"Loading scan results from {current_file}")
+                    scan_results = llm_remediation.load_scan_results(current_file)
+                    logger.info(f"Processing scan results with remediation middleware")
+                    enhanced_results = middleware.process_scan_results(scan_results)
+                    logger.info(f"Saving enhanced results to {remediation_output}")
+                    llm_remediation.save_scan_results(enhanced_results, remediation_output)
+                    logger.info("Remediation enhancement completed successfully")
+                except Exception as e:
+                    logger.error(f"Error using remediation middleware: {e}", exc_info=True)
+                    print(f"Error enhancing remediation: {e}")
+                    # Continue with the original file
+                    remediation_output = current_file
+            else:
+                # Fall back to subprocess
+                logger.info("Falling back to subprocess for llm_remediation_middleware")
+                cmd = [
+                    "python3", llm_remediation_path,
+                    "--input", current_file,
+                    "--output", remediation_output,
+                    "--provider", llm_provider,
+                    "--batch-size", str(batch_size),
+                    "--max-workers", str(max_workers)
+                ]
+                if llm_model:
+                    cmd.extend(["--model", llm_model])
+                    
+                subprocess.run(cmd, check=True)
+                
+            current_file = remediation_output
+            logger.info(f"Remediation enhancement complete. Output saved to {remediation_output}")
+        
+        # Step 2: Enhance descriptions if requested
+        if use_description:
+            logger.info("Enhancing vulnerability descriptions with LLM...")
+            description_output = f"{os.path.splitext(output_file)[0]}_description_enhanced.json"
+            temp_files.append(description_output)
+            
+            # Try to import the module
+            llm_description_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "llm_description.py")
+            logger.info(f"Looking for description middleware at: {llm_description_path}")
+            
+            if not os.path.exists(llm_description_path):
+                logger.error(f"Description middleware file not found: {llm_description_path}")
+                print(f"Error: Description middleware file not found. Skipping description enhancement.")
+                use_description = False
+            else:
+                llm_description = import_llm_module(llm_description_path, "llm_description")
+            
+            if llm_description:
+                # Use the imported module
+                logger.info("Using imported llm_description module")
+                
+                # Direct integration without using command-line parsing
+                try:
+                    # Create configuration
+                    if hasattr(llm_description, 'DescriptionConfig'):
+                        config_class = getattr(llm_description, 'DescriptionConfig')
+                        config_params = {
+                            'llm_provider': llm_provider,
+                            'batch_size': batch_size,
+                            'max_workers': max_workers
+                        }
+                        
+                        # Set the appropriate model and credentials based on provider
+                        if llm_provider == 'openai':
+                            if api_key:
+                                config_params['openai_api_key'] = api_key
+                            config_params['openai_model'] = llm_model if llm_model else "gpt-4o"
+                        else:  # ollama
+                            if ollama_url:
+                                config_params['ollama_base_url'] = ollama_url
+                            config_params['ollama_model'] = llm_model if llm_model else "llama3"
+                            
+                        config = config_class(**config_params)
+                    else:
+                        # If no config class is found, try to create a generic dict config
+                        config = {
+                            'llm_provider': llm_provider,
+                            'model': llm_model,
+                            'batch_size': batch_size,
+                            'max_workers': max_workers
+                        }
+                    
+                    # Create middleware instance
+                    logger.info(f"Creating LLMDescriptionMiddleware with config: {config}")
+                    middleware = llm_description.LLMDescriptionMiddleware(config)
+                    
+                    # Process the scan results
+                    logger.info(f"Loading scan results from {current_file}")
+                    scan_results = llm_description.load_scan_results(current_file)
+                    logger.info(f"Processing scan results with description middleware")
+                    enhanced_results = middleware.process_scan_results(scan_results)
+                    logger.info(f"Saving enhanced results to {description_output}")
+                    llm_description.save_scan_results(enhanced_results, description_output)
+                    logger.info("Description enhancement completed successfully")
+                except Exception as e:
+                    logger.error(f"Error using description middleware: {e}", exc_info=True)
+                    print(f"Error enhancing descriptions: {e}")
+                    # Continue with the original file
+                    description_output = current_file
+            else:
+                # Fall back to subprocess
+                logger.info("Falling back to subprocess for llm_description")
+                cmd = [
+                    "python3", llm_description_path,
+                    "--input", current_file,
+                    "--output", description_output,
+                    "--provider", llm_provider,
+                    "--batch-size", str(batch_size),
+                    "--max-workers", str(max_workers)
+                ]
+                if llm_model:
+                    cmd.extend(["--model", llm_model])
+                    
+                subprocess.run(cmd, check=True)
+                
+            current_file = description_output
+            logger.info(f"Description enhancement complete. Output saved to {description_output}")
+        
+        # Step 3: Copy the final result to the output file
+        if current_file != output_file:
+            try:
+                with open(current_file, 'r') as src, open(output_file, 'w') as dst:
+                    content = src.read()
+                    dst.write(content)
+                logger.info(f"Final enhanced results saved to {output_file}")
+                
+                # Verify the output file was created and has content
+                if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
+                    logger.info(f"Successfully created output file: {output_file} with size {os.path.getsize(output_file)} bytes")
+                else:
+                    logger.error(f"Output file issue: exists={os.path.exists(output_file)}, size={os.path.getsize(output_file) if os.path.exists(output_file) else 'N/A'}")
+            except Exception as e:
+                logger.error(f"Error copying to final output file: {e}", exc_info=True)
+                print(f"Error saving final results: {e}")
+            
+        return output_file
+    except Exception as e:
+        logger.error(f"Error in LLM enhancement pipeline: {e}", exc_info=True)
+        print(f"Error in LLM enhancement pipeline: {e}")
+        return input_file
+
 def main():
     """Main function to parse arguments and run the report generator."""
     parser = argparse.ArgumentParser(description="Generate vulnerability reports from scan results")
@@ -941,6 +1424,23 @@ def main():
     # JWT remediation command
     jwt_parser = subparsers.add_parser("add-jwt-remediations", help="Add JWT vulnerability remediations")
     jwt_parser.add_argument("--scanid", required=True, help="ID of the scan to update")
+    
+    # NEW: LLM enhancement command
+    llm_parser = subparsers.add_parser("enhance-with-llm", help="Enhance scan results with LLM-generated content")
+    llm_parser.add_argument("--input", required=True, help="Path to the input scan results file")
+    llm_parser.add_argument("--output", required=True, help="Path to save the enhanced results")
+    llm_parser.add_argument("--no-remediation", action="store_false", dest="remediation", help="Skip remediation enhancement")
+    llm_parser.add_argument("--no-description", action="store_false", dest="description", help="Skip description enhancement")
+    llm_parser.add_argument("--provider", choices=["openai", "ollama"], default="openai", help="LLM provider to use")
+    llm_parser.add_argument("--model", help="Model to use (provider-specific)")
+    llm_parser.add_argument("--api-key", help="API key for the LLM provider (required for OpenAI)")
+    llm_parser.add_argument("--ollama-url", default="http://localhost:11434", help="URL for Ollama server")
+    llm_parser.add_argument("--batch-size", type=int, default=5, help="Batch size for processing")
+    llm_parser.add_argument("--max-workers", type=int, default=3, help="Maximum number of worker threads")
+    llm_parser.add_argument("--generate-report", action="store_true", help="Generate a report after enhancement")
+    llm_parser.add_argument("--report-format", choices=["json", "csv", "html"], default="html", 
+                           help="Format of the report (if --generate-report is specified)")
+    llm_parser.add_argument("--report-output", help="Path to save the report (if --generate-report is specified)")
     
     args = parser.parse_args()
     
@@ -975,6 +1475,77 @@ def main():
         add_jwt_vulnerability_remediations(args.scanid)
         print(f"Added JWT vulnerability remediations for scan ID: {args.scanid}")
         
+    elif args.command == "enhance-with-llm":
+        # Run the LLM enhancement pipeline
+        logger.info(f"Starting LLM enhancement pipeline for {args.input}")
+        logger.info(f"Debug - Command arguments: {vars(args)}")
+        
+        # Check if the input file exists
+        if not os.path.exists(args.input):
+            logger.error(f"Input file not found: {args.input}")
+            print(f"Error: Input file not found: {args.input}")
+            sys.exit(1)
+            
+        # Create output directory if it doesn't exist
+        output_dir = os.path.dirname(args.output)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            logger.info(f"Created output directory: {output_dir}")
+        
+        enhanced_file = run_llm_enhancement_pipeline(
+            args.input, args.output,
+            use_remediation=args.remediation,
+            use_description=args.description,
+            llm_provider=args.provider,
+            llm_model=args.model,
+            api_key=args.api_key,
+            ollama_url=args.ollama_url,
+            batch_size=args.batch_size,
+            max_workers=args.max_workers
+        )
+        
+        logger.info(f"Enhancement pipeline completed. Result: {enhanced_file}")
+        print(f"Enhanced scan results saved to {enhanced_file}")
+        
+        # Generate a report if requested
+        if args.generate_report:
+            # Set default report output path if not provided
+            report_output = args.report_output
+            if not report_output:
+                # Create reports directory if it doesn't exist
+                reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
+                if not os.path.exists(reports_dir):
+                    os.makedirs(reports_dir)
+            
+            # Extract scan ID from the enhanced file
+            scan_id = None
+            try:
+                with open(enhanced_file, 'r') as f:
+                    enhanced_data = json.load(f)
+                    scan_id = enhanced_data.get('scan_id')
+            except Exception as e:
+                logger.warning(f"Could not extract scan_id from enhanced file: {e}")
+            
+            # If we couldn't get scan_id from the file content, try to extract from filename
+            if not scan_id:
+                filename = os.path.basename(args.input)
+                scan_id = os.path.splitext(filename)[0]
+                logger.info(f"Using scan_id from input filename: {scan_id}")
+            
+            if not report_output:
+                report_output = os.path.join(reports_dir, f"report_{scan_id}_enhanced.{args.report_format}")
+            
+            # Generate the report using the enhanced file
+            logger.info(f"Generating {args.report_format} report from enhanced results for scan ID: {scan_id}")
+            generator = ReportGenerator(
+                scan_id=scan_id, 
+                output_format=args.report_format, 
+                output_path=report_output, 
+                use_direct_file=True,
+                input_file=enhanced_file  # Use the enhanced file directly
+            )
+            generator.generate_report()
+            print(f"Generated {args.report_format.upper()} report at {report_output}")
     else:
         parser.print_help()
 

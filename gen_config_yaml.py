@@ -141,7 +141,17 @@ def generate_config(openapi_spec: Dict[str, Any], spec_path: str) -> Dict[str, A
             "disable_fallback_endpoints": True  # Disable fallback endpoints as requested
         },
         "scanners": [
-            {"name": "sql_injection", "enabled": True},
+            {
+                "name": "sql_injection", 
+                "enabled": True,
+                "config": {
+                    "intensity": "blind",  # options: none|blind|smart; default is 'blind'
+                    "test_delay": 3.0,
+                    "max_tests_per_endpoint": 3,
+                    "continue_on_status_codes": [200, 401, 422],
+                    "stop_on_first_vulnerability": True
+                }
+            },
             {"name": "broken_authentication", "enabled": True},
             {"name": "broken_access_control", "enabled": True},
             {"name": "excessive_data_exposure", "enabled": True},

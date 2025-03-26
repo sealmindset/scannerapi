@@ -1,0 +1,153 @@
+{{#if error}}
+<div class="alert alert-danger">{{error}}</div>
+{{/if}}
+
+<div class="container mt-4">
+  <!-- Debug info -->
+  <div class="alert alert-info mb-3">
+    <h5>Debug Information</h5>
+    <p>Scan ID: {{scanId}}</p>
+    <p>Vulnerability Count: {{vulnerabilities.length}}</p>
+    <p>Has Metadata: {{debug.hasMetadata}}</p>
+    <p>Report Path: {{debug.reportPath}}</p>
+    <p>Title: {{scanTitle}}</p>
+    <p>Description: {{scanDescription}}</p>
+  </div>
+
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Simple Edit Report: {{scanTitle}}</h1>
+    <div>
+      <button id="saveReportBtn" class="btn btn-primary">Save Changes</button>
+      <a href="/results/{{scanId}}" class="btn btn-secondary ms-2">View Report</a>
+    </div>
+  </div>
+  
+  <p class="text-muted">{{scanDescription}}</p>
+  
+  <div class="card mb-4">
+    <div class="card-header bg-light">
+      <h5 class="mb-0">Vulnerabilities</h5>
+    </div>
+    <div class="card-body">
+      {{#each vulnerabilities}}
+        <div class="vulnerability-section mb-5" data-vuln-id="{{id}}">
+          <h3 class="border-bottom pb-2">{{name}}</h3>
+          
+          <div class="mb-4">
+            <label class="form-label fw-bold">Description</label>
+            <textarea class="form-control" id="description-{{id}}" rows="5">{{description}}</textarea>
+          </div>
+          
+          <div class="mb-4">
+            <label class="form-label fw-bold">Risk Assessment</label>
+            <textarea class="form-control" id="risk-{{id}}" rows="5">{{risk}}</textarea>
+          </div>
+          
+          <div class="mb-4">
+            <label class="form-label fw-bold">Impact Analysis</label>
+            <textarea class="form-control" id="impact-{{id}}" rows="5">{{impact}}</textarea>
+          </div>
+          
+          <div class="mb-4">
+            <label class="form-label fw-bold">Real-World Examples</label>
+            <textarea class="form-control" id="examples-{{id}}" rows="5">{{examples}}</textarea>
+          </div>
+          
+          <div class="mb-4">
+            <label class="form-label fw-bold">Remediation</label>
+            <textarea class="form-control" id="remediation-{{id}}" rows="5">{{remediation}}</textarea>
+          </div>
+          
+          <div class="alert alert-secondary">
+            <h5>Evidence</h5>
+            <pre>{{evidence}}</pre>
+          </div>
+        </div>
+      {{/each}}
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // Save button handler
+    document.getElementById('saveReportBtn').addEventListener('click', function() {
+      const vulnerabilities = [];
+      
+      // Collect data from all vulnerability sections
+      document.querySelectorAll('.vulnerability-section').forEach(section => {
+        const vulnId = section.dataset.vulnId;
+        
+        vulnerabilities.push({
+          id: vulnId,
+          name: section.querySelector('h3').textContent.trim(),
+          description: document.getElementById(`description-${vulnId}`).value,
+          risk: document.getElementById(`risk-${vulnId}`).value,
+          impact: document.getElementById(`impact-${vulnId}`).value,
+          examples: document.getElementById(`examples-${vulnId}`).value,
+          remediation: document.getElementById(`remediation-${vulnId}`).value
+        });
+      });
+      
+      // Send data to server
+      fetch(`/reports/${scanId}/save`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ vulnerabilities })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          // Show success message
+          const alert = document.createElement('div');
+          alert.className = 'alert alert-success alert-dismissible fade show';
+          alert.innerHTML = `
+            <strong>Success!</strong> Report saved successfully.
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          `;
+          document.querySelector('.container').prepend(alert);
+          
+          // Auto-dismiss after 3 seconds
+          setTimeout(() => {
+            const bsAlert = new bootstrap.Alert(alert);
+            bsAlert.close();
+          }, 3000);
+        } else {
+          // Show error message
+          const alert = document.createElement('div');
+          alert.className = 'alert alert-danger alert-dismissible fade show';
+          alert.innerHTML = `
+            <strong>Error!</strong> ${data.error}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          `;
+          document.querySelector('.container').prepend(alert);
+        }
+      })
+      .catch(error => {
+        console.error('Error saving report:', error);
+        // Show error message
+        const alert = document.createElement('div');
+        alert.className = 'alert alert-danger alert-dismissible fade show';
+        alert.innerHTML = `
+          <strong>Error!</strong> Failed to save report. Please try again.
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+        document.querySelector('.container').prepend(alert);
+      });
+    });
+  });
+</script>
+
+<style>
+  pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+    background-color: #f8f9fa;
+    padding: 1rem;
+    border-radius: 0.25rem;
+  }
+</style>

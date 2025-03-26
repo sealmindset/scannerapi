@@ -1,0 +1,179 @@
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Scan Results</h2>
+    <div>
+      {{#if (eq scanDetails.enhanced 'true')}}
+        <a href="/results/{{scanId}}/enhance" class="btn btn-outline-success me-2">Re-enhance with LLM</a>
+      {{else}}
+        <a href="/results/{{scanId}}/enhance" class="btn btn-success me-2">Enhance with LLM</a>
+      {{/if}}
+      <a href="/reports/{{scanId}}/edit" class="btn btn-secondary me-2">Edit Report</a>
+      <a href="/scan" class="btn btn-primary">New Scan</a>
+    </div>
+  </div>
+  
+  <div class="card mb-4">
+    <div class="card-body">
+      <h3 class="card-title">{{scanTitle}}</h3>
+      {{#if scanDescription}}
+        <p class="card-text">{{scanDescription}}</p>
+      {{/if}}
+      <p class="card-text"><strong>Scan ID:</strong> {{scanId}}</p>
+      
+      {{#if scanDetails}}
+        <div class="row mt-3">
+          <div class="col-md-6">
+            <dl class="row">
+              <dt class="col-sm-4">Target URL</dt>
+              <dd class="col-sm-8">{{scanDetails.targetUrl}}</dd>
+              
+              <dt class="col-sm-4">Created</dt>
+              <dd class="col-sm-8">{{formatDate scanDetails.createdAt}}</dd>
+            </dl>
+          </div>
+          <div class="col-md-6">
+            <dl class="row">
+              <dt class="col-sm-4">Enhanced</dt>
+              <dd class="col-sm-8">
+                {{#if (eq scanDetails.enhanced 'true')}}
+                  <span class="badge bg-success">Yes - {{scanDetails.llmProvider}} {{scanDetails.llmModel}}</span>
+                {{else}}
+                  <span class="badge bg-secondary">No</span>
+                {{/if}}
+              </dd>
+              
+              <dt class="col-sm-4">Vulnerabilities</dt>
+              <dd class="col-sm-8">
+                <span class="badge bg-{{#if (gt vulnerabilities.length 0)}}danger{{else}}success{{/if}}">
+                  {{vulnerabilities.length}}
+                </span>
+              </dd>
+            </dl>
+          </div>
+        </div>
+      {{/if}}
+    </div>
+  </div>
+  
+  {{#if vulnerabilities.length}}
+    <div class="card mb-4">
+      <div class="card-header bg-light">
+        <h5 class="mb-0">Vulnerabilities</h5>
+      </div>
+      <div class="card-body">
+        {{#each vulnerabilities}}
+          <div class="vulnerability-section mb-5" id="{{id}}">
+            <div class="d-flex justify-content-between align-items-center">
+              <h3 class="border-bottom pb-2">{{name}}</h3>
+              <span class="badge bg-{{#if (eq severity 'CRITICAL')}}danger{{else if (eq severity 'HIGH')}}warning{{else if (eq severity 'MEDIUM')}}info{{else}}secondary{{/if}} ms-2">{{severity}}</span>
+            </div>
+            
+            {{#if url}}
+              <div class="mb-3">
+                <strong>Endpoint:</strong> <code>{{url}}</code>
+              </div>
+            {{/if}}
+            
+            {{#if description}}
+              <div class="mb-4">
+                <h5>Description</h5>
+                <div class="card">
+                  <div class="card-body bg-light">
+                    {{{description}}}
+                  </div>
+                </div>
+              </div>
+            {{/if}}
+            
+            {{#if risk}}
+              <div class="mb-4">
+                <h5>Risk Assessment</h5>
+                <div class="card">
+                  <div class="card-body bg-light">
+                    {{{risk}}}
+                  </div>
+                </div>
+              </div>
+            {{/if}}
+            
+            {{#if impact}}
+              <div class="mb-4">
+                <h5>Impact Analysis</h5>
+                <div class="card">
+                  <div class="card-body bg-light">
+                    {{{impact}}}
+                  </div>
+                </div>
+              </div>
+            {{/if}}
+            
+            {{#if examples}}
+              <div class="mb-4">
+                <h5>Real-World Examples</h5>
+                <div class="card">
+                  <div class="card-body bg-light">
+                    {{{examples}}}
+                  </div>
+                </div>
+              </div>
+            {{/if}}
+            
+            {{#if remediation}}
+              <div class="mb-4">
+                <h5>Remediation</h5>
+                <div class="card">
+                  <div class="card-body bg-light">
+                    {{{remediation}}}
+                  </div>
+                </div>
+              </div>
+            {{/if}}
+            
+            {{#if evidence}}
+              <div class="mb-4">
+                <h5>Evidence</h5>
+                <div class="alert alert-secondary">
+                  <pre class="mb-0">{{evidence}}</pre>
+                </div>
+              </div>
+            {{/if}}
+          </div>
+        {{/each}}
+      </div>
+    </div>
+  {{else}}
+    <div class="card">
+      <div class="card-body">
+        <div class="report-container">
+          {{{reportContent}}}
+        </div>
+      </div>
+    </div>
+  {{/if}}
+</div>
+
+<style>
+  .report-container {
+    overflow-x: auto;
+  }
+  
+  /* Override any conflicting styles from the report HTML */
+  .report-container table {
+    width: 100%;
+    margin-bottom: 1rem;
+    border-collapse: collapse;
+  }
+  
+  .report-container th,
+  .report-container td {
+    padding: 0.75rem;
+    vertical-align: top;
+    border-top: 1px solid #dee2e6;
+  }
+  
+  .report-container th {
+    vertical-align: bottom;
+    border-bottom: 2px solid #dee2e6;
+    background-color: #f8f9fa;
+  }
+</style>

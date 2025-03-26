@@ -69,17 +69,12 @@ class BaseScanner(ABC):
         self.findings = []
         self.logger = get_logger(self.__class__.__name__)
         
-        # Support for simulation mode when the target server is not available
-        self.simulate_server = target.get("simulate_server", False)
-        self.simulate_vulnerabilities = config.get("simulate_vulnerabilities", False)
+        # Simulation mode has been completely removed
+        # All scanners now use real requests and responses in production environments
         
         # Option to disable fallback endpoints
         self.disable_fallback_endpoints = target.get("disable_fallback_endpoints", False)
         
-        if self.simulate_server:
-            self.logger.info("Server simulation mode enabled - API responses will be simulated")
-        if self.simulate_vulnerabilities:
-            self.logger.info("Vulnerability simulation mode enabled - vulnerabilities will be simulated")
         if self.disable_fallback_endpoints:
             self.logger.info("Fallback endpoints disabled - only testing endpoints from OpenAPI specification")
         
@@ -117,6 +112,20 @@ class BaseScanner(ABC):
             self.logger.debug("No authentication configured")
         else:
             self.logger.warn(f"Unsupported authentication type: {auth_type}")
+            
+    def _get_full_url(self, endpoint: str) -> str:
+        """
+        Get the full URL for an endpoint.
+        
+        Args:
+            endpoint: The endpoint path
+            
+        Returns:
+            The full URL
+        """
+        base_url = self.base_url.rstrip('/')
+        endpoint = endpoint.lstrip('/')
+        return f"{base_url}/{endpoint}"
     
     def get_or_create_test_account(self, endpoint: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
@@ -253,9 +262,8 @@ class BaseScanner(ABC):
             ScannerRateLimitError: If rate limit is exceeded
             ScannerExecutionError: For other request errors
         """
-        # Handle simulation mode
-        if self.simulate_server:
-            return self._simulate_response(method, endpoint, data, json_data, params)
+        # Simulation mode has been removed to ensure only real requests are made
+        # All scanners will now use real requests and responses in production environments
             
         # Use default values if not specified
         timeout = timeout if timeout is not None else self.timeout

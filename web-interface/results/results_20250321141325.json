@@ -1,0 +1,31 @@
+{
+  "finding_id": "683d269a",
+  "scanner": "Scanner",
+  "timestamp": "20250321141325",
+  "request": {
+    "method": "GET",
+    "url": "http://localhost:5002/users/v1/_debug",
+    "headers": {
+      "User-Agent": "python-requests/2.32.3",
+      "Accept-Encoding": "gzip, deflate, zstd",
+      "Accept": "*/*",
+      "Connection": "keep-alive"
+    },
+    "params": null,
+    "data": null,
+    "json": null
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "Server": "Werkzeug/2.2.3 Python/3.11.11",
+      "Date": "Fri, 21 Mar 2025 19:13:25 GMT",
+      "Content-Type": "application/json",
+      "Content-Length": "4187",
+      "Connection": "close"
+    },
+    "content_length": 4187,
+    "elapsed": 0.002977,
+    "body": "{\n  \"users\": [\n    {\n      \"admin\": false,\n      \"email\": \"mail1@mail.com\",\n      \"password\": \"NewPass@1742583759\",\n      \"username\": \"name1\"\n    },\n    {\n      \"admin\": false,\n      \"email\": \"mail2@mail.com\",\n      \"password\": \"pass2\",\n      \"username\": \"name2\"\n    },\n    {\n      \"admin\": true,\n      \"email\": \"admin@mail.com\",\n      \"password\": \"pass1\",\n      \"username\": \"admin\"\n    },\n    {\n      \"admin\": true,\n      \"email\": \"admin_user_1742576297_dzppsu@example.com\",\n      \"password\": \"Admin@1742576297\",\n      \"username\": \"admin_user_1742576297_dzppsu@example.com\"\n    },\n    {\n      \"admin\": false,\n      \"email\": \"test_user_1742576297_iv1ivm@example.com\",\n      \"password\": \"Test@1742576297\",\n      \"username\": \"test_user_1742576297_iv1ivm\"\n    },\n    {\n      \"admin\": false,\n      \"email\": \"test_mass_assignment_1742576297@example.com\",\n      \"password\": \"Test@123456\",\n      \"username\": \"test_mass_assignment_1742576297\"\n    },\n    {\n      \"admin\": true,\n      \"email\": \"test_mass_reg_1742580572@example.com\",\n      \"password\": \"Test@1742580572\",\n      \"username\": \"test_mass_reg_1742580572\"\n    },\n    {\n      \"admin\": true,\n      \"email\": \"test_user_1742576297_gv1d1v@example.com\",\n      \"password\": \"Test@1742576297\",\n      \"username\": \"test_user_1742576297_gv1d1v\"\n    },\n    {\n      \"admin\": true,\n      \"email\": \"admin_user_1742582439_yr1fb4@example.com\",\n      \"password\": \"Admin@1742582439\",\n      \"username\": \"admin_user_1742582439_yr1fb4@example.com\"\n    },\n    {\n      \"admin\": false,\n      \"email\": \"test_user_1742582439_9qqx2p@example.com\",\n      \"password\": \"Test@1742582439\",\n      \"username\": \"test_user_1742582439_9qqx2p\"\n    },\n    {\n      \"admin\": false,\n      \"email\": \"test_mass_assignment_1742582439@example.com\",\n      \"password\": \"Test@123456\",\n      \"username\": \"test_mass_assignment_1742582439\"\n    },\n    {\n      \"admin\": true,\n      \"email\": \"test_mass_reg_1742582453@example.com\",\n      \"password\": \"Test@1742582453\",\n      \"username\": \"test_mass_reg_1742582453\"\n    },\n    {\n      \"admin\": true,\n      \"email\": \"test_user_1742582439_arp93z@example.com\",\n      \"password\": \"Test@1742582439\",\n      \"username\": \"test_user_1742582439_arp93z\"\n    },\n    {\n      \"admin\": true,\n      \"email\": \"admin_user_1742583269_2176iq@example.com\",\n      \"password\": \"Admin@1742583269\",\n      \"username\": \"admin_user_1742583269_2176iq@example.com\"\n    },\n    {\n      \"admin\": false,\n      \"email\": \"test_user_1742583269_lyh12f@example.com\",\n      \"password\": \"Test@1742583269\",\n      \"username\": \"test_user_1742583269_lyh12f\"\n    },\n    {\n      \"admin\": false,\n      \"email\": \"test_mass_assignment_1742583269@example.com\",\n      \"password\": \"Test@123456\",\n      \"username\": \"test_mass_assignment_1742583269\"\n    },\n    {\n      \"admin\": true,\n      \"email\": \"test_mass_reg_1742583284@example.com\",\n      \"password\": \"Test@1742583284\",\n      \"username\": \"test_mass_reg_1742583284\"\n    },\n    {\n      \"admin\": true,\n      \"email\": \"test_user_1742583269_cndaj7@example.com\",\n      \"password\": \"Test@1742583269\",\n      \"username\": \"test_user_1742583269_cndaj7\"\n    },\n    {\n      \"admin\": true,\n      \"email\": \"admin_user_1742583759_2xvv2y@example.com\",\n      \"password\": \"Admin@1742583759\",\n      \"username\": \"admin_user_1742583759_2xvv2y@example.com\"\n    },\n    {\n      \"admin\": false,\n      \"email\": \"test_user_1742583759_pbimoj@example.com\",\n      \"password\": \"Test@1742583759\",\n      \"username\": \"test_user_1742583759_pbimoj\"\n    },\n    {\n      \"admin\": false,\n      \"email\": \"test_mass_assignment_1742583759@example.com\",\n      \"password\": \"Test@123456\",\n      \"username\": \"test_mass_assignment_1742583759\"\n    },\n    {\n      \"admin\": true,\n      \"email\": \"test_mass_reg_1742583774@example.com\",\n      \"password\": \"Test@1742583774\",\n      \"username\": \"test_mass_reg_1742583774\"\n    },\n    {\n      \"admin\": true,\n      \"email\": \"test_user_1742583759_i1pcuz@example.com\",\n      \"password\": \"Test@1742583759\",\n      \"username\": \"test_user_1742583759_i1pcuz\"\n    },\n    {\n      \"admin\": true,\n      \"email\": \"admin_user_1742584401_xhk2x0@example.com\",\n      \"password\": \"Admin@1742584401\",\n      \"username\": \"admin_user_1742584401_xhk2x0@example.com\"\n    }\n  ]\n}\n"
+  }
+}

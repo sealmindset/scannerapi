@@ -1,0 +1,23 @@
+--- llm_remediation_middleware.py.orig
++++ llm_remediation_middleware.py
+@@ -246,7 +246,10 @@
+     def _setup_prompt_template(self):
+         """Set up the prompt template for remediation generation."""
+-        template = """
++        # Get template from prompt manager
++        template_str = get_prompt_template('remediation_template')
++        if not template_str:
++            logger.warning('Could not load remediation template from prompt manager, using default template')
++            template_str = """
+ You are a cybersecurity expert specializing in API security. Your task is to provide detailed remediation steps for a vulnerability.
+ 
+ Vulnerability: {vulnerability}
+@@ -274,7 +277,7 @@
+ 
+         self.prompt_template = PromptTemplate(
+             input_variables=["vulnerability", "severity", "endpoint", "details", "api_structure"],
+-            template=template,
++            template=template_str,
+         )
+     
+     def _detect_api_structure(self, endpoint: str) -> str:

@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vulnerability Report - {{scanId}}</title>
+    <style>
+
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        h1, h2, h3 {
+            color: #2c3e50;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        .summary-table th, .summary-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .summary-table th {
+            background-color: #f2f2f2;
+        }
+        .vulnerability {
+            margin-bottom: 30px;
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .critical {
+            border-left: 5px solid #e74c3c;
+        }
+        .high {
+            border-left: 5px solid #e67e22;
+        }
+        .medium {
+            border-left: 5px solid #f1c40f;
+        }
+        .low {
+            border-left: 5px solid #3498db;
+        }
+        .info {
+            border-left: 5px solid #2ecc71;
+        }
+        .vuln-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .severity {
+            padding: 5px 10px;
+            border-radius: 3px;
+            color: white;
+            font-weight: bold;
+        }
+        .severity.critical {
+            background-color: #e74c3c;
+        }
+        .severity.high {
+            background-color: #e67e22;
+        }
+        .severity.medium {
+            background-color: #f1c40f;
+            color: #333;
+        }
+        .severity.low {
+            background-color: #3498db;
+        }
+        .severity.info {
+            background-color: #2ecc71;
+        }
+        .code-block {
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            padding: 10px;
+            overflow-x: auto;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .section {
+            margin-bottom: 15px;
+        }
+        .section-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .enhanced-content {
+            background-color: #f0f7ff;
+            border-left: 3px solid #3498db;
+            padding: 10px 15px;
+            margin: 10px 0;
+            line-height: 1.5;
+        }
+    
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Vulnerability Report</h1>
+
+        <h2>Scan Summary</h2>
+        <table class="summary-table">
+            <tr>
+                <th>Scan ID</th>
+                <td>{{scanId}}</td>
+            </tr>
+            <tr>
+                <th>Timestamp</th>
+                <td>{{timestamp}}</td>
+            </tr>
+            <tr>
+                <th>Target URL</th>
+                <td>{{target}}</td>
+            </tr>
+        </table>
+        
+        <h2>Vulnerability Summary</h2>
+        <table class="summary-table">
+            <tr>
+                <th>Scanner</th>
+                <th>Vulnerability</th>
+                <th>Severity</th>
+                <th>Endpoint</th>
+            </tr>
+
+            {{#each vulnerabilities}}
+            <tr>
+                <td>{{scanner}}</td>
+                <td>{{title}}</td>
+                <td class="severity {{severityClass}}">{{severity}}</td>
+                <td>{{#if details.endpoint}}{{details.endpoint}}{{else}}N/A{{/if}}</td>
+            </tr>
+            {{/each}}
+        </table>
+
+        <h2>Detailed Findings</h2>
+        
+        {{#each vulnerabilities}}
+        <div class="vulnerability {{severityClass}}">
+            <div class="vuln-header">
+                <h3>{{index}}. {{title}}</h3>
+                <span class="severity {{severityClass}}">{{severity}}</span>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Description:</div>
+                <!-- Using triple braces to allow HTML content to render properly -->
+                <div>{{{description}}}</div>
+            </div>
+            
+            {{#if evidence}}
+            <div class="section">
+                <div class="section-title">Evidence:</div>
+                <div class="code-block">
+                {{#each evidence}}
+                    <p><strong>{{@key}}:</strong></p>
+                    <pre>{{this}}</pre>
+                {{/each}}
+                </div>
+            </div>
+            {{/if}}
+            
+            <div class="section">
+                <div class="section-title">Remediation:</div>
+                <!-- Using triple braces to allow HTML content to render properly -->
+                <div>{{{remediation}}}</div>
+            </div>
+        </div>
+        {{/each}}
+    </div>
+</body>
+</html>
