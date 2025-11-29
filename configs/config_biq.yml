@@ -1,35 +1,98 @@
 target:
-  base_url: https://backend.dev-snorefox-wellness.diametos.com/api/v1/mobile/
+  base_url: https://backend.dev-snorefox-wellness.diametos.com/api/v1/mobile
   auth:
     type: bearer
-    login_endpoint: /auth/sign-in
+    login_endpoint: auth/sign-in
     username_field: email
     password_field: password
     token_field: accessToken
     credentials:
-      email: test@example.com
-      password: Test123!@#
+      email: superman1@example.com
+      password: Password#123
   openapi:
     spec_path: swagger/biq.yml
     extract_endpoints: true
-    use_spec_server_url: true
+    use_spec_server_url: false
   simulate_server: false
-  disable_fallback_endpoints: true
+  disable_fallback_endpoints: false
 scanners:
 - name: sql_injection
   enabled: false
 - name: broken_authentication
   enabled: true
+  config:
+    register_endpoint: auth/sign-up
+    login_endpoint: auth/sign-in
+    username_field: email
+    password_field: password
+    email_field: email
+    access_token_field: accessToken
+    additional_fields:
+      firstName: "Test"
+      lastName: "User"
+      timezone: "America/New_York"
 - name: broken_access_control
   enabled: true
+  config:
+    register_endpoint: auth/sign-up
+    login_endpoint: auth/sign-in
+    username_field: email
+    password_field: password
+    email_field: email
+    additional_fields:
+      firstName: "Test"
+      lastName: "User"
+      timezone: "America/New_York"
 - name: excessive_data_exposure
   enabled: true
+  config:
+    register_endpoint: auth/sign-up
+    login_endpoint: auth/sign-in
+    username_field: email
+    password_field: password
+    email_field: email
+    additional_fields:
+      firstName: "Test"
+      lastName: "User"
+      timezone: "America/New_York"
 - name: mass_assignment
   enabled: true
+  config:
+    register_endpoint: auth/sign-up
+    login_endpoint: auth/sign-in
+    username_field: email
+    password_field: password
+    email_field: email
+    additional_fields:
+      firstName: "Test"
+      lastName: "User"
+      timezone: "America/New_York"
 - name: unauthorized_password_change
   enabled: true
+  config:
+    register_endpoint: auth/sign-up
+    login_endpoint: auth/sign-in
+    username_field: email
+    password_field: password
+    email_field: email
+    additional_fields:
+      firstName: "Test"
+      lastName: "User"
+      timezone: "America/New_York"
 - name: unrestricted_account_creation
   enabled: true
+  config:
+    endpoint: auth/sign-up
+    method: POST
+    register_endpoint: auth/sign-up
+    login_endpoint: auth/sign-in
+    username_field: email
+    password_field: password
+    email_field: email
+    additional_fields:
+      firstName: "Test"
+      lastName: "User"
+      timezone: "America/New_York"
 - name: regex_dos
   enabled: false
 - name: jwt_vulnerabilities
@@ -37,11 +100,16 @@ scanners:
   config:
     simulate_vulnerabilities: false
     debug: true
-    login_endpoint: /auth/sign-in
-    refresh_token_endpoint: /auth/refresh-tokens
-    user_info_endpoint: /auth/check
-    register_endpoint: /auth/sign-up
+    register_endpoint: auth/sign-up
+    login_endpoint: auth/sign-in
+    user_info_endpoint: users/me
+    refresh_token_endpoint: auth/refresh-tokens
     username_field: email
     password_field: password
+    email_field: email
     access_token_field: accessToken
     refresh_token_field: refreshToken
+    additional_fields:
+      firstName: "Test"
+      lastName: "User"
+      timezone: "America/New_York"

@@ -1,0 +1,134 @@
+target:
+  base_url: https://backend.dev-snorefox-wellness.diametos.com/api/v1/mobile
+  auth:
+    type: bearer
+    login_endpoint: auth/sign-in
+    username_field: email
+    password_field: password
+    token_field: accessToken
+    credentials:
+      email: superman1@example.com
+      password: Password#123
+  openapi:
+    spec_path: swagger/biq.yml
+    extract_endpoints: true
+    use_spec_server_url: false
+  simulate_server: true
+  disable_fallback_endpoints: false
+  # Add rate limiting protection
+  request_delay: 1.0
+  max_retries: 2
+  retry_delay: 5.0
+  # SSL verification settings
+  verify_ssl: false
+  suppress_ssl_warnings: true
+  # Headers
+  headers:
+    User-Agent: "ScannerAPI/1.0"
+    Accept: "application/json"
+
+# Scanner configuration
+scanners:
+# Focus on authentication and JWT vulnerabilities
+- name: broken_authentication
+  enabled: true
+  config:
+    login_endpoint: auth/sign-in
+    refresh_token_endpoint: auth/refresh-tokens
+    user_info_endpoint: auth/check
+    register_endpoint: auth/sign-up
+    debug_endpoint: auth/check
+    username_field: email
+    password_field: password
+    access_token_field: accessToken
+    refresh_token_field: refreshToken
+    test_delay: 2.0
+    max_tests_per_endpoint: 3
+
+- name: jwt_vulnerabilities
+  enabled: true
+  config:
+    simulate_vulnerabilities: false
+    debug: true
+    login_endpoint: auth/sign-in
+    refresh_token_endpoint: auth/refresh-tokens
+    user_info_endpoint: auth/check
+    register_endpoint: auth/sign-up
+    username_field: email
+    password_field: password
+    access_token_field: accessToken
+
+- name: improper_error_handling
+  enabled: true
+  config:
+    login_endpoint: auth/sign-in
+    register_endpoint: auth/sign-up
+    admin_endpoints: 
+      - admin/users
+      - admin/settings
+    non_existent_endpoints:
+      - admin/users
+      - admin/settings
+      - api/v1/debug
+      - api/internal/users
+      - api/config
+    username_field: email
+    password_field: password
+
+# SQL Injection scanner with optimized settings
+- name: sql_injection
+  enabled: true
+  config:
+    intensity: "blind"  # options: none|blind|smart; default is 'blind'
+    # Focus on specific endpoints to avoid rate limiting
+    endpoints:
+      - auth/sign-in
+      - auth/sign-up
+      - auth/check
+    # Optimize for performance and rate limiting
+    test_delay: 3.0
+    max_tests_per_endpoint: 3
+    # Only continue testing if we get specific status codes
+    continue_on_status_codes: [200, 401, 422]
+    # Stop testing after first vulnerability is found
+    stop_on_first_vulnerability: true
+
+- name: broken_access_control
+  enabled: true
+  config:
+    admin_endpoint: admin
+    user_endpoint: users/me
+    test_delay: 2.0
+    max_tests_per_endpoint: 3
+
+- name: excessive_data_exposure
+  enabled: false
+
+- name: mass_assignment
+  enabled: true
+  config:
+    endpoints:
+      - auth/sign-up
+      - users/me
+    test_delay: 2.0
+    max_tests_per_endpoint: 3
+
+- name: unauthorized_password_change
+  enabled: true
+  config:
+    password_change_endpoint: auth/change-password
+    test_delay: 2.0
+    max_tests_per_endpoint: 3
+
+- name: unrestricted_account_creation
+  enabled: true
+  config:
+    endpoint: auth/sign-up
+    test_delay: 2.0
+    max_tests_per_endpoint: 3
+    debug: true
+    test_count: 15
+    adapt_to_rate_limiting: true
+
+- name: regex_dos
+  enabled: false

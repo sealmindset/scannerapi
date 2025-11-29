@@ -1,0 +1,955 @@
+#!/usr/bin/env python3
+"""
+LLM Description Enhancement Middleware
+
+This script enhances vulnerability descriptions in scan results using LLM APIs
+(OpenAI or Ollama) with Redis caching. It adds contextual information about:
+1. The risk the vulnerability represents
+2. The potential impact if exploited
+3. Real-world examples of similar exploits
+
+Usage:
+    python llm_description.py --input <scan_results.json> --output <enhanced_results.json>
+"""
+
+import argparse
+import hashlib
+import json
+import logging
+import os
+import re
+import sys
+import time
+import concurrent.futures
+from typing import Dict, List, Optional, Any, Union, Tuple
+
+import redis
+from dotenv import load_dotenv
+from langchain.prompts import PromptTemplate
+from utils.prompt_manager import get_prompt_template
+from langchain_community.llms import Ollama
+from langchain_openai import ChatOpenAI
+from pydantic import BaseModel, Field, field_validator
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("llm_description")
+
+# Load environment variables
+load_dotenv()
+
+
+class DescriptionConfig(BaseModel):
+    """Configuration for the LLM description enhancement middleware."""
+
+    # LLM Provider Configuration
+    llm_provider: str = Field(
+        default="openai", description="LLM provider to use: 'openai' or 'ollama'"
+    )
+    openai_api_key: Optional[str] = Field(
+        default=None, description="OpenAI API key for authentication"
+    )
+    openai_model: str = Field(
+        default="gpt-4o", description="OpenAI model to use for generation"
+    )
+    ollama_base_url: str = Field(
+        default="http://localhost:11434", description="Base URL for Ollama API"
+    )
+    ollama_model: str = Field(
+        default="llama3.3", description="Ollama model to use for generation"
+    )
+    
+    # LLM Generation Parameters
+    temperature: float = Field(
+        default=0.2, description="Temperature for LLM generation (0.0-1.0)"
+    )
+    max_tokens: int = Field(
+        default=2048, description="Maximum tokens for LLM generation"
+    )
+    
+    # Redis Configuration
+    redis_host: str = Field(
+        default="localhost", description="Redis host for caching"
+    )
+    redis_port: int = Field(
+        default=6379, description="Redis port for caching"
+    )
+    redis_db: int = Field(
+        default=0, description="Redis database for caching"
+    )
+    redis_password: Optional[str] = Field(
+        default=None, description="Redis password for authentication"
+    )
+    redis_key_prefix: str = Field(
+        default="description:", description="Prefix for Redis cache keys"
+    )
+    redis_ttl: int = Field(
+        default=86400 * 30, description="TTL for Redis cache entries (in seconds)"
+    )
+    
+    # Batch Processing Configuration
+    batch_size: int = Field(
+        default=5, description="Number of vulnerabilities to process in parallel"
+    )
+    max_workers: int = Field(
+        default=3, description="Maximum number of worker threads for batch processing"
+    )
+    
+    # Validation for OpenAI API key
+    @field_validator("openai_api_key", mode="before")
+    def validate_openai_api_key(cls, v):
+        if v is None:
+            return os.getenv("OPENAI_API_KEY")
+        return v
+
+
+class VulnerabilityEvidence(BaseModel):
+    """Model for vulnerability evidence data."""
+    
+    request: Optional[Dict[str, Any]] = None
+    response: Optional[Dict[str, Any]] = None
+    normal_test: Optional[Dict[str, Any]] = None
+    aggressive_test: Optional[Dict[str, Any]] = None
+    optimal_rate: Optional[Dict[str, Any]] = None
+    example_request_response: Optional[Dict[str, Any]] = None
+    
+    class Config:
+        extra = "allow"
+
+
+class Vulnerability(BaseModel):
+    """Model for vulnerability data from scan results."""
+    
+    vulnerability: str = Field(..., description="Vulnerability name/title")
+    severity: str = Field(..., description="Severity level of the vulnerability")
+    endpoint: str = Field(..., description="Affected endpoint")
+    details: str = Field(..., description="Vulnerability details/description")
+    evidence: Optional[Union[Dict[str, Any], VulnerabilityEvidence]] = Field(
+        default={}, description="Evidence of the vulnerability"
+    )
+    remediation: Optional[str] = Field(
+        default="", description="Remediation steps for the vulnerability"
+    )
+    risk_assessment: Optional[str] = Field(
+        default="", description="Assessment of the risk posed by the vulnerability"
+    )
+    impact_analysis: Optional[str] = Field(
+        default="", description="Analysis of potential impact if exploited"
+    )
+    real_world_examples: Optional[str] = Field(
+        default="", description="Real-world examples of similar exploits"
+    )
+    
+    class Config:
+        extra = "allow"
+
+
+class ScannerResults(BaseModel):
+    """Model for scanner results containing findings."""
+    
+    name: str = Field(..., description="Scanner name")
+    findings: List[Vulnerability] = Field(
+        default_factory=list, description="List of vulnerability findings"
+    )
+    
+    class Config:
+        extra = "allow"
+
+
+class ScanResults(BaseModel):
+    """Model for overall scan results."""
+    
+    scan_id: str = Field(..., description="Unique scan identifier")
+    target: str = Field(..., description="Target URL or system")
+    start_time: str = Field(..., description="Scan start time")
+    duration: float = Field(..., description="Scan duration in seconds")
+    scanners: List[ScannerResults] = Field(
+        default_factory=list, description="List of scanner results"
+    )
+    
+    class Config:
+        extra = "allow"
+
+
+class LLMDescriptionMiddleware:
+    """Middleware that enhances vulnerability descriptions with risk assessment, impact analysis,
+    and real-world examples using LLM APIs with Redis caching."""
+    
+    def __init__(self, config: DescriptionConfig):
+        """
+        Initialize the middleware with the provided configuration.
+        
+        Args:
+            config: Configuration for the middleware
+        """
+        self.config = config
+        self._setup_redis()
+        self._setup_llm()
+        self._setup_prompt_template()
+        
+        # Statistics tracking
+        self.processed_count = 0
+        self.total_count = 0
+        self.success_count = 0
+        self.error_count = 0
+        self.skipped_count = 0
+        self.start_time = None
+    
+    def _setup_redis(self) -> None:
+        """Set up Redis connection for caching."""
+        try:
+            self.redis_client = redis.Redis(
+                host=self.config.redis_host,
+                port=self.config.redis_port,
+                db=self.config.redis_db,
+                password=self.config.redis_password,
+                decode_responses=True,
+            )
+            self.redis_client.ping()  # Test connection
+            logger.info(f"Connected to Redis at {self.config.redis_host}:{self.config.redis_port}")
+        except redis.ConnectionError as e:
+            logger.warning(f"Redis connection failed: {e}. Caching will be disabled.")
+            self.redis_client = None
+    
+    def _setup_llm(self) -> None:
+        """Set up LLM client based on the configured provider."""
+        if self.config.llm_provider == "openai":
+            if not self.config.openai_api_key:
+                logger.error("OpenAI API key is required for OpenAI provider")
+                sys.exit(1)
+                
+            self.llm = ChatOpenAI(
+                model=self.config.openai_model,
+                temperature=self.config.temperature,
+                max_tokens=self.config.max_tokens,
+                api_key=self.config.openai_api_key,
+            )
+            logger.info(f"Using OpenAI API for description enhancement")
+        elif self.config.llm_provider == "ollama":
+            self.llm = Ollama(
+                model=self.config.ollama_model,
+                temperature=self.config.temperature,
+                base_url=self.config.ollama_base_url,
+            )
+            logger.info(f"Using Ollama API for description enhancement")
+        else:
+            logger.error(f"Unsupported LLM provider: {self.config.llm_provider}")
+            sys.exit(1)
+    
+    def _setup_prompt_template(self) -> None:
+        # Get template from prompt manager
+        template_str = get_prompt_template("description_template")
+        if not template_str:
+        """Set up the prompt template for description enhancement."""
+        template = """
+        You are a cybersecurity expert tasked with enhancing vulnerability descriptions with contextual information.
+        
+        Vulnerability: {vulnerability}
+        Severity: {severity}
+        Endpoint: {endpoint}
+        Details: {details}
+        API Structure: {api_structure}
+        
+        Based on the information above, provide a comprehensive analysis of this vulnerability that includes:
+        
+        1. RISK ASSESSMENT: Explain the specific security risk this vulnerability represents. Include technical details about how the vulnerability could be exploited and what security principles it violates. If this is related to rate limiting or unrestricted account creation, explain how attackers might bypass rate limiting mechanisms and at what rates accounts could potentially be created.
+        
+        2. IMPACT ANALYSIS: Describe the potential business and technical impact if this vulnerability were successfully exploited. Consider data confidentiality, integrity, availability, and any regulatory implications. For authentication-related vulnerabilities, discuss how they might affect different API structures including non-standard ones like Snorefox or mobile API endpoints.
+        
+        3. REAL-WORLD EXAMPLES: Provide 2-3 specific, documented examples of similar vulnerabilities being exploited in real-world scenarios. Include organization names, approximate dates, and outcomes when available. If possible, include examples that are relevant to the specific API structure identified.
+        
+        Format your response with clear section headers and concise, technical explanations. Focus on factual information relevant to this specific vulnerability type and API structure. If the vulnerability is related to JWT issues, unrestricted account creation, or broken authentication, be particularly detailed about the exploitation techniques and preventative measures.
+        
+        Response:
+        """
+        
+        self.prompt_template = PromptTemplate(
+            input_variables=["vulnerability", "severity", "endpoint", "details", "api_structure"],
+            template=template,
+        )
+    
+    def _detect_api_structure(self, endpoint: str) -> str:
+        """
+        Detect the API structure based on the endpoint pattern.
+        
+        Args:
+            endpoint: The API endpoint to analyze
+            
+        Returns:
+            The detected API structure name
+        """
+        if not endpoint:
+            return "standard"
+        
+        # Normalize the endpoint for consistent pattern matching
+        normalized_endpoint = endpoint.strip().lower()
+        if normalized_endpoint.startswith('/'):
+            normalized_endpoint = normalized_endpoint[1:]
+        
+        # Check for Snorefox API structure (based on the memory about Snorefox API)
+        if any(pattern in normalized_endpoint for pattern in [
+            "auth/sign-up", "auth/sign-in", "auth/sign-out", 
+            "users/me", "auth/check", "auth/refresh", "auth/"
+        ]):
+            return "snorefox"
+        
+        # Check for mobile API patterns (focus on mobile API endpoints as mentioned in memory)
+        if "api/v1/mobile" in normalized_endpoint or "mobile" in normalized_endpoint or "app" in normalized_endpoint:
+            return "mobile_api"
+        
+        # Check for standard RESTful API patterns
+        if any(pattern in normalized_endpoint for pattern in [
+            "api/users", "api/login", "api/register", "users", "register", "login",
+            "api/auth", "api/v1/users", "api/v2/users", "api/v1", "api/v2"
+        ]):
+            return "standard_rest"
+        
+        # Check for JWT-related endpoints (based on memory about JWT vulnerabilities)
+        if "jwt" in normalized_endpoint or "token" in normalized_endpoint or "auth" in normalized_endpoint:
+            return "jwt_auth"
+        
+        # Check for GraphQL API pattern
+        if "graphql" in normalized_endpoint or "gql" in normalized_endpoint:
+            return "graphql"
+        
+        # Default to standard API structure
+        return "standard"
+    
+    def _get_api_structure_description(self, structure_name: str) -> str:
+        """
+        Get a description of the API structure.
+        
+        Args:
+            structure_name: Name of the API structure
+            
+        Returns:
+            Description of the API structure
+        """
+        if structure_name == "snorefox":
+            return (
+                "This API follows the RESTful pattern with authentication endpoints under the `/auth` path. "
+                "Registration endpoint is at `/auth/sign-up` instead of the more common `/users` or `/register`. "
+                "Login endpoint is at `/auth/sign-in` instead of `/login`. "
+                "User-specific endpoints are under `/users/me` with bearer token authentication. "
+                "The API uses different field names than standard API conventions. "
+                "Authentication is handled via JWT tokens with bearer authentication. "
+                "This API structure requires special handling for vulnerability detection due to its non-standard naming conventions."
+            )
+        elif structure_name == "standard_rest":
+            return (
+                "This API follows a standard RESTful pattern with common endpoint naming conventions. "
+                "User registration is typically at `/api/users` or `/api/register`. "
+                "Authentication is typically at `/api/login` or `/api/auth`. "
+                "Resources are organized in a hierarchical structure following RESTful principles. "
+                "Standard JWT authentication mechanisms are likely used."
+            )
+        elif structure_name == "graphql":
+            return (
+                "This API follows a GraphQL pattern with a single endpoint that accepts query and mutation operations. "
+                "Authentication is typically handled via HTTP headers rather than specific endpoints. "
+                "Vulnerabilities in GraphQL APIs often relate to introspection, query depth, and authorization checks. "
+                "JWT tokens may be used for authentication and are subject to similar vulnerabilities as in REST APIs."
+            )
+        elif structure_name == "mobile_api":
+            return (
+                "This API is designed for mobile applications with endpoints under the `/api/v1/mobile/` path. "
+                "Mobile APIs often have different authentication mechanisms and may expose sensitive functionality. "
+                "These APIs may have less stringent security controls compared to web-focused APIs. "
+                "Mobile APIs are particularly susceptible to unrestricted account creation vulnerabilities and JWT-related issues. "
+                "Rate limiting vulnerabilities may be present, allowing attackers to create accounts at high rates despite apparent protections."
+            )
+        elif structure_name == "jwt_auth":
+            return (
+                "This API uses JWT (JSON Web Token) based authentication. "
+                "Common vulnerabilities include weak signing keys, 'none' algorithm acceptance, missing signature validation, "
+                "and improper handling of token expiration. JWT tokens should be carefully validated on the server side "
+                "to prevent authentication bypasses and unauthorized access to protected resources. "
+                "Attackers may attempt to modify token payloads or exploit implementation weaknesses in the JWT validation process."
+            )
+        
+        # Default description
+        return "This API follows a standard pattern with common endpoint naming conventions. It may be vulnerable to common API security issues including JWT vulnerabilities, unrestricted account creation, and broken authentication mechanisms."
+    
+    def _generate_cache_key(self, vulnerability: Dict[str, Any]) -> str:
+        """
+        Generate a unique cache key for a vulnerability.
+        
+        Args:
+            vulnerability: Vulnerability data as dictionary
+            
+        Returns:
+            Unique cache key as a string
+        """
+        # Create a string with key vulnerability attributes for hashing
+        cache_input = f"{vulnerability.get('vulnerability', '')}-{vulnerability.get('endpoint', '')}-{vulnerability.get('details', '')}"
+        
+        # Generate MD5 hash of the input string
+        cache_key = hashlib.md5(cache_input.encode()).hexdigest()
+        
+        # Add prefix for Redis key namespace
+        return f"{self.config.redis_key_prefix}{cache_key}"
+    
+    def _get_cached_description(self, cache_key: str) -> Optional[Dict[str, str]]:
+        """
+        Get cached description from Redis if available.
+        
+        Args:
+            cache_key: Cache key for the description
+            
+        Returns:
+            Cached description or None if not found
+        """
+        if not self.redis_client:
+            return None
+            
+        try:
+            cached_data = self.redis_client.get(cache_key)
+            if cached_data:
+                logger.info(f"Cache hit for {cache_key}")
+                return json.loads(cached_data)
+            else:
+                logger.info(f"Cache miss for {cache_key}")
+                return None
+        except Exception as e:
+            logger.warning(f"Error retrieving from cache: {e}")
+            return None
+    
+    def _cache_description(self, cache_key: str, description_data: Dict[str, str]) -> bool:
+        """
+        Cache description in Redis.
+        
+        Args:
+            cache_key: Cache key for the description
+            description_data: Description data to cache
+            
+        Returns:
+            True if caching was successful, False otherwise
+        """
+        if not self.redis_client:
+            return False
+            
+        try:
+            self.redis_client.setex(
+                cache_key,
+                self.config.redis_ttl,
+                json.dumps(description_data)
+            )
+            logger.info(f"Cached description for {cache_key}")
+            return True
+        except Exception as e:
+            logger.warning(f"Error caching description: {e}")
+            return False
+    
+    def _log_progress(self) -> None:
+        """
+        Log progress of processing vulnerabilities.
+        """
+        if self.total_count == 0:
+            return
+            
+        elapsed_time = time.time() - self.start_time
+        processed_percent = (self.processed_count / self.total_count) * 100
+        
+        # Calculate estimated remaining time
+        if self.processed_count > 0:
+            avg_time_per_item = elapsed_time / self.processed_count
+            remaining_items = self.total_count - self.processed_count
+            estimated_remaining = avg_time_per_item * remaining_items
+        else:
+            estimated_remaining = 0
+            
+        logger.info(
+            f"Progress: {self.processed_count}/{self.total_count} ({processed_percent:.1f}%) - "
+            f"Elapsed: {elapsed_time:.1f}s, Estimated remaining: {estimated_remaining:.1f}s"
+        )
+    
+    def generate_description(self, vulnerability: Dict[str, Any]) -> Dict[str, str]:
+        """
+        Generate enhanced description for a vulnerability using LLM with caching.
+        
+        Args:
+            vulnerability: Vulnerability data as dictionary
+            
+        Returns:
+            Dictionary with risk assessment, impact analysis, and real-world examples
+        """
+        # Check if vulnerability has required fields
+        required_fields = ["vulnerability", "severity", "endpoint", "details"]
+        if not all(field in vulnerability for field in required_fields):
+            logger.warning(f"Skipping vulnerability with missing required fields: {vulnerability.get('vulnerability', 'Unknown')}")
+            return {
+                "risk_assessment": "",
+                "impact_analysis": "",
+                "real_world_examples": ""
+            }
+        
+        # Check if vulnerability already has substantial description
+        existing_fields = [
+            vulnerability.get("risk_assessment", ""),
+            vulnerability.get("impact_analysis", ""),
+            vulnerability.get("real_world_examples", "")
+        ]
+        if all(field and len(field) > 50 for field in existing_fields):
+            logger.info(f"Skipping {vulnerability['vulnerability']} - already has substantial description")
+            return {
+                "risk_assessment": vulnerability.get("risk_assessment", ""),
+                "impact_analysis": vulnerability.get("impact_analysis", ""),
+                "real_world_examples": vulnerability.get("real_world_examples", "")
+            }
+        
+        # Generate cache key
+        cache_key = self._generate_cache_key(vulnerability)
+        
+        # Check cache first
+        cached_description = self._get_cached_description(cache_key)
+        if cached_description:
+            return cached_description
+        
+        # Detect API structure
+        endpoint = vulnerability.get("endpoint", "")
+        api_structure = self._detect_api_structure(endpoint)
+        api_structure_description = self._get_api_structure_description(api_structure)
+        
+        # Prepare prompt inputs
+        prompt_inputs = {
+            "vulnerability": vulnerability.get("vulnerability", ""),
+            "severity": vulnerability.get("severity", ""),
+            "endpoint": endpoint,
+            "details": vulnerability.get("details", ""),
+            "api_structure": api_structure_description
+        }
+        
+        # Generate description using LLM with retry logic
+        max_retries = 3
+        for attempt in range(1, max_retries + 1):
+            try:
+                logger.info(f"Generating description for {vulnerability['vulnerability']} (attempt {attempt}/{max_retries})")
+                
+                # Format the prompt and generate response
+                prompt = self.prompt_template.format(**prompt_inputs)
+                response = self.llm.invoke(prompt)
+                
+                # Parse the response to extract sections
+                response_text = response.content if hasattr(response, 'content') else str(response)
+                
+                # Extract sections from the response
+                sections = self._parse_response_sections(response_text)
+                
+                # Cache the description
+                self._cache_description(cache_key, sections)
+                
+                return sections
+                
+            except Exception as e:
+                logger.error(f"Error generating description (attempt {attempt}/{max_retries}): {e}")
+                if attempt == max_retries:
+                    return {
+                        "risk_assessment": "Error generating risk assessment.",
+                        "impact_analysis": "Error generating impact analysis.",
+                        "real_world_examples": "Error retrieving real-world examples."
+                    }
+                time.sleep(2)  # Wait before retrying
+    
+    def _parse_response_sections(self, response_text: str) -> Dict[str, str]:
+        """
+        Parse the LLM response to extract the different sections.
+        
+        Args:
+            response_text: The full response from the LLM
+            
+        Returns:
+            Dictionary with extracted sections
+        """
+        sections = {
+            "risk_assessment": "",
+            "impact_analysis": "",
+            "real_world_examples": ""
+        }
+        
+        # Extract Risk Assessment section
+        risk_pattern = r"(?i)RISK ASSESSMENT:?\s*([\s\S]*?)(?=IMPACT ANALYSIS:|REAL-WORLD EXAMPLES:|$)"
+        risk_match = re.search(risk_pattern, response_text)
+        if risk_match:
+            sections["risk_assessment"] = risk_match.group(1).strip()
+        
+        # Extract Impact Analysis section
+        impact_pattern = r"(?i)IMPACT ANALYSIS:?\s*([\s\S]*?)(?=RISK ASSESSMENT:|REAL-WORLD EXAMPLES:|$)"
+        impact_match = re.search(impact_pattern, response_text)
+        if impact_match:
+            sections["impact_analysis"] = impact_match.group(1).strip()
+        
+        # Extract Real-World Examples section
+        examples_pattern = r"(?i)REAL-WORLD EXAMPLES:?\s*([\s\S]*?)(?=RISK ASSESSMENT:|IMPACT ANALYSIS:|$)"
+        examples_match = re.search(examples_pattern, response_text)
+        if examples_match:
+            sections["real_world_examples"] = examples_match.group(1).strip()
+        
+        return sections
+    
+    def _process_finding(self, finding: Dict[str, Any]) -> Tuple[Dict[str, Any], bool, bool]:
+        """
+        Process a single finding and generate enhanced description.
+        
+        Args:
+            finding: The vulnerability finding to process
+            
+        Returns:
+            Tuple of (updated finding, success flag, skipped flag)
+        """
+        try:
+            # Generate enhanced description
+            description_data = self.generate_description(finding)
+            
+            # Check if description was generated or skipped
+            if all(not value for value in description_data.values()):
+                logger.info(f"Skipped {finding.get('vulnerability', 'Unknown')}")
+                return finding, False, True
+            
+            # Update finding with enhanced description
+            finding["risk_assessment"] = description_data["risk_assessment"]
+            finding["impact_analysis"] = description_data["impact_analysis"]
+            finding["real_world_examples"] = description_data["real_world_examples"]
+            
+            return finding, True, False
+            
+        except Exception as e:
+            logger.error(f"Error processing finding: {e}")
+            return finding, False, False
+    
+    def _process_batch(self, findings: List[Dict[str, Any]]) -> List[Tuple[Dict[str, Any], bool, bool]]:
+        """
+        Process a batch of findings in parallel.
+        
+        Args:
+            findings: List of findings to process
+            
+        Returns:
+            List of processed findings with success and skipped flags
+        """
+        results = []
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.config.max_workers) as executor:
+            # Submit all tasks
+            future_to_finding = {executor.submit(self._process_finding, finding): finding for finding in findings}
+            
+            # Process results as they complete
+            for future in concurrent.futures.as_completed(future_to_finding):
+                try:
+                    processed_finding, success, skipped = future.result()
+                    results.append((processed_finding, success, skipped))
+                    
+                    # Update statistics
+                    self.processed_count += 1
+                    if success:
+                        self.success_count += 1
+                    elif skipped:
+                        self.skipped_count += 1
+                    else:
+                        self.error_count += 1
+                        
+                    # Log progress periodically
+                    if self.processed_count % 5 == 0 or self.processed_count == self.total_count:
+                        self._log_progress()
+                        
+                except Exception as e:
+                    logger.error(f"Error processing batch item: {e}")
+                    self.processed_count += 1
+                    self.error_count += 1
+            
+        return results
+    
+    def _group_vulnerabilities_by_api_structure(self, findings: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Group vulnerabilities by their API structure for more consistent description enhancement.
+        
+        Args:
+            findings: List of vulnerability findings
+            
+        Returns:
+            Dictionary mapping API structure names to lists of vulnerabilities
+        """
+        grouped = {}
+        
+        for finding in findings:
+            endpoint = finding.get("endpoint", "")
+            api_structure = self._detect_api_structure(endpoint)
+            
+            if api_structure not in grouped:
+                grouped[api_structure] = []
+                
+            grouped[api_structure].append(finding)
+            
+        return grouped
+    
+    def process_scan_results(self, scan_results: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Process scan results to enhance vulnerability descriptions using batch processing.
+        
+        Args:
+            scan_results: Scan results to process as dictionary
+            
+        Returns:
+            Processed scan results with enhanced descriptions
+        """
+        scan_id = scan_results.get("scan_id", "unknown")
+        logger.info(f"Processing scan results for scan ID: {scan_id}")
+        
+        # Reset statistics and start timer
+        self.processed_count = 0
+        self.total_count = 0
+        self.success_count = 0
+        self.error_count = 0
+        self.skipped_count = 0
+        self.start_time = time.time()
+        
+        # Collect all findings for batch processing
+        all_findings = []
+        finding_map = {}  # Maps finding to its location in the scan_results
+        
+        for scanner_idx, scanner in enumerate(scan_results.get("scanners", [])):
+            scanner_name = scanner.get("name", "unknown")
+            findings = scanner.get("findings", [])
+            
+            if not findings:
+                logger.info(f"No findings for scanner: {scanner_name}")
+                continue
+                
+            logger.info(f"Collecting findings from scanner: {scanner_name}")
+            
+            for finding_idx, finding in enumerate(findings):
+                all_findings.append(finding)
+                finding_map[id(finding)] = (scanner_idx, finding_idx)
+        
+        self.total_count = len(all_findings)
+        logger.info(f"Found {self.total_count} total vulnerabilities to process")
+        
+        if self.total_count == 0:
+            logger.info("No vulnerabilities to process")
+            return scan_results
+        
+        # Group findings by API structure for more consistent description enhancement
+        grouped_findings = self._group_vulnerabilities_by_api_structure(all_findings)
+        
+        # Process each group separately
+        for api_structure, findings_group in grouped_findings.items():
+            group_size = len(findings_group)
+            logger.info(f"Processing {group_size} vulnerabilities for API structure: {api_structure}")
+            
+            # Process findings in batches
+            batch_size = min(self.config.batch_size, group_size)
+            
+            for i in range(0, group_size, batch_size):
+                batch = findings_group[i:i+batch_size]
+                logger.info(f"Processing batch {i//batch_size + 1}/{(group_size + batch_size - 1)//batch_size} for {api_structure} API structure")
+                
+                # Process the batch
+                processed_batch = self._process_batch(batch)
+                
+                # Update the original findings in scan_results
+                for processed_finding, _, _ in processed_batch:
+                    if id(processed_finding) in finding_map:
+                        scanner_idx, finding_idx = finding_map[id(processed_finding)]
+                        scan_results["scanners"][scanner_idx]["findings"][finding_idx] = processed_finding
+        
+        # Final progress report
+        elapsed_time = time.time() - self.start_time
+        logger.info(f"Enhanced {self.success_count} out of {self.total_count} vulnerabilities in {elapsed_time:.2f} seconds")
+        logger.info(f"Success: {self.success_count}, Errors: {self.error_count}, Skipped: {self.skipped_count}")
+        
+        return scan_results
+
+
+def load_scan_results(file_path: str) -> Dict[str, Any]:
+    """
+    Load scan results from a JSON file.
+    
+    Args:
+        file_path: Path to the JSON file
+        
+    Returns:
+        Scan results as a dictionary
+    """
+    try:
+        with open(file_path, "r") as f:
+            data = json.load(f)
+        logger.info(f"Loaded scan results from {file_path}")
+        return data
+    except Exception as e:
+        logger.error(f"Error loading scan results from {file_path}: {e}")
+        sys.exit(1)
+
+
+def save_scan_results(scan_results: Dict[str, Any], file_path: str) -> None:
+    """
+    Save scan results to a JSON file.
+    
+    Args:
+        scan_results: Scan results to save
+        file_path: Path to the JSON file
+    """
+    try:
+        with open(file_path, "w") as f:
+            json.dump(scan_results, f, indent=2)
+        logger.info(f"Saved scan results to {file_path}")
+    except Exception as e:
+        logger.error(f"Error saving scan results to {file_path}: {e}")
+        sys.exit(1)
+
+
+def parse_args() -> argparse.Namespace:
+    """
+    Parse command-line arguments.
+    
+    Returns:
+        Parsed arguments
+    """
+    parser = argparse.ArgumentParser(
+        description="Enhance vulnerability descriptions in scan results using LLM"
+    )
+    
+    parser.add_argument(
+        "--input", "-i",
+        required=True,
+        help="Path to input scan results JSON file"
+    )
+    
+    parser.add_argument(
+        "--output", "-o",
+        required=True,
+        help="Path to output enhanced scan results JSON file"
+    )
+    
+    parser.add_argument(
+        "--provider", "-p",
+        choices=["openai", "ollama"],
+        default="openai",
+        help="LLM provider to use (default: openai)"
+    )
+    
+    parser.add_argument(
+        "--model", "-m",
+        help="Model name for the selected provider (default: gpt-4o for OpenAI, llama3 for Ollama)"
+    )
+    
+    parser.add_argument(
+        "--batch-size", "-b",
+        type=int,
+        default=5,
+        help="Number of vulnerabilities to process in parallel (default: 5)"
+    )
+    
+    parser.add_argument(
+        "--max-workers", "-w",
+        type=int,
+        default=3,
+        help="Maximum number of worker threads for batch processing (default: 3)"
+    )
+    
+    parser.add_argument(
+        "--redis-host",
+        default="localhost",
+        help="Redis host for caching (default: localhost)"
+    )
+    
+    parser.add_argument(
+        "--redis-port",
+        type=int,
+        default=6379,
+        help="Redis port for caching (default: 6379)"
+    )
+    
+    parser.add_argument(
+        "--redis-db",
+        type=int,
+        default=0,
+        help="Redis database for caching (default: 0)"
+    )
+    
+    parser.add_argument(
+        "--redis-password",
+        help="Redis password for authentication"
+    )
+    
+    parser.add_argument(
+        "--redis-ttl",
+        type=int,
+        default=86400 * 30,
+        help="TTL for Redis cache entries in seconds (default: 30 days)"
+    )
+    
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.2,
+        help="Temperature for LLM generation (default: 0.2)"
+    )
+    
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=2048,
+        help="Maximum tokens for LLM generation (default: 2048)"
+    )
+    
+    return parser.parse_args()
+
+
+def main() -> None:
+    """
+    Main entry point for the script.
+    """
+    # Parse command-line arguments
+    args = parse_args()
+    
+    # Check for OpenAI API key if using OpenAI provider
+    if args.provider == "openai" and not os.getenv("OPENAI_API_KEY"):
+        logger.error("OpenAI API key is required when using the OpenAI provider.")
+        logger.error("Please set the OPENAI_API_KEY environment variable or use --provider ollama")
+        sys.exit(1)
+        
+    # Check for Ollama model if using Ollama provider
+    if args.provider == "ollama":
+        ollama_model = args.model if args.model else "llama3"
+        logger.info(f"Using Ollama with model: {ollama_model}")
+        logger.info(f"Make sure the model is available. You may need to run: ollama pull {ollama_model}")
+    
+    # Create configuration from arguments
+    config = DescriptionConfig(
+        llm_provider=args.provider,
+        openai_model=args.model if args.model and args.provider == "openai" else "gpt-4o",
+        ollama_model=args.model if args.model and args.provider == "ollama" else "llama3",
+        temperature=args.temperature,
+        max_tokens=args.max_tokens,
+        redis_host=args.redis_host,
+        redis_port=args.redis_port,
+        redis_db=args.redis_db,
+        redis_password=args.redis_password,
+        redis_ttl=args.redis_ttl,
+        batch_size=args.batch_size,
+        max_workers=args.max_workers,
+    )
+    
+    # Load scan results
+    logger.info(f"Loading scan results from {args.input}")
+    scan_results = load_scan_results(args.input)
+    
+    # Create middleware
+    middleware = LLMDescriptionMiddleware(config)
+    
+    # Process scan results
+    logger.info("Processing scan results...")
+    enhanced_results = middleware.process_scan_results(scan_results)
+    
+    # Save enhanced results
+    logger.info(f"Saving enhanced scan results to {args.output}")
+    save_scan_results(enhanced_results, args.output)
+    
+    logger.info("Done!")
+
+
+if __name__ == "__main__":
+    main()

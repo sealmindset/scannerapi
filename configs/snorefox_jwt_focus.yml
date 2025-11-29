@@ -1,0 +1,75 @@
+target:
+  base_url: https://backend.dev-snorefox-wellness.diametos.com/api/v1/mobile
+  auth:
+    type: bearer
+    login_endpoint: auth/sign-in
+    username_field: email
+    password_field: password
+    token_field: accessToken
+    credentials:
+      email: superman1@example.com
+      password: Password#123
+  openapi:
+    spec_path: swagger/biq.yml
+    extract_endpoints: true
+    use_spec_server_url: false
+  simulate_server: false
+  disable_fallback_endpoints: false
+  # Add rate limiting protection
+  request_delay: 2.0
+  max_retries: 3
+  retry_delay: 10.0
+  # SSL verification settings
+  verify_ssl: false
+  suppress_ssl_warnings: true
+  # Headers
+  headers:
+    User-Agent: "ScannerAPI/1.0"
+    Accept: "application/json"
+
+# Scanner configuration - focus only on JWT vulnerabilities
+scanners:
+- name: jwt_vulnerabilities
+  enabled: true
+  config:
+    simulate_vulnerabilities: false
+    debug: true
+    login_endpoint: auth/sign-in
+    refresh_token_endpoint: auth/refresh-tokens
+    user_info_endpoint: auth/check
+    register_endpoint: auth/sign-up
+    username_field: email
+    password_field: password
+    access_token_field: accessToken
+    refresh_token_field: refreshToken
+    test_delay: 3.0
+    max_tests_per_endpoint: 5
+    # Detailed evidence collection
+    collect_detailed_evidence: true
+    # Save JWT tokens for analysis
+    save_tokens: true
+
+# Disable all other scanners to avoid rate limiting
+- name: sql_injection
+  enabled: false
+
+- name: broken_authentication
+  enabled: false
+
+- name: broken_access_control
+  enabled: false
+
+- name: excessive_data_exposure
+  enabled: false
+
+- name: mass_assignment
+  enabled: false
+
+- name: unauthorized_password_change
+  enabled: false
+
+- name: unrestricted_account_creation
+  enabled: false
+
+- name: regex_dos
+  enabled: false

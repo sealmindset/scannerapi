@@ -1,0 +1,79 @@
+# Enhanced configuration for scanning Snorefox API with intelligent authentication handling
+# This configuration focuses on JWT vulnerabilities with enhanced detection capabilities
+
+target:
+  base_url: https://backend.dev-snorefox-wellness.diametos.com/api/v1/mobile
+  auth:
+    type: bearer
+    login_endpoint: auth/sign-in
+    credentials:
+      email: superman1@example.com
+      password: Password#123
+    username_field: email
+    password_field: password
+    token_field: accessToken
+  verify_ssl: false
+  timeout: 30
+  disable_fallback_endpoints: false
+  use_spec_server_url: false
+
+scanners:
+  # Enhanced JWT Vulnerabilities Scanner
+  jwt_vulnerabilities_enhanced:
+    enabled: true
+    test_none_algorithm: true
+    test_weak_keys: true
+    test_missing_signature: true
+    test_token_replay: true
+    test_expiration: true
+    test_kid_injection: true
+    
+  # Standard JWT Vulnerabilities Scanner (disabled in favor of enhanced version)
+  jwt_vulnerabilities:
+    enabled: false
+    
+  # Other scanners (disabled to focus on JWT)
+  sql_injection:
+    enabled: false
+  
+  xss:
+    enabled: false
+  
+  csrf:
+    enabled: false
+  
+  open_redirect:
+    enabled: false
+  
+  server_side_request_forgery:
+    enabled: false
+  
+  insecure_direct_object_references:
+    enabled: false
+  
+  mass_assignment:
+    enabled: false
+  
+  unrestricted_file_upload:
+    enabled: false
+  
+  xml_external_entity:
+    enabled: false
+  
+  server_side_template_injection:
+    enabled: false
+  
+  command_injection:
+    enabled: false
+  
+  broken_authentication:
+    enabled: false
+  
+  sensitive_data_exposure:
+    enabled: false
+  
+  missing_rate_limits:
+    enabled: false
+  
+  unrestricted_account_creation:
+    enabled: false

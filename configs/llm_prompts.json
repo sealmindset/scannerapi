@@ -1,0 +1,39 @@
+{
+  "description_template": {
+    "name": "Vulnerability Description Enhancement",
+    "description": "Template used to enhance vulnerability descriptions with contextual information",
+    "template": "You are a cybersecurity expert tasked with enhancing vulnerability descriptions with contextual information.\n\nVulnerability: {vulnerability}\nSeverity: {severity}\nEndpoint: {endpoint}\nDetails: {details}\nAPI Structure: {api_structure}\n\nBased on the information above, provide a comprehensive analysis of this vulnerability that includes:\n\n1. RISK ASSESSMENT: Explain the specific security risk this vulnerability represents. Include technical details about how the vulnerability could be exploited and what security principles it violates. If this is related to rate limiting or unrestricted account creation, explain how attackers might bypass rate limiting mechanisms and at what rates accounts could potentially be created.\n\n2. IMPACT ANALYSIS: Describe the potential business and technical impact if this vulnerability were successfully exploited. Consider data confidentiality, integrity, availability, and any regulatory implications. For authentication-related vulnerabilities, discuss how they might affect different API structures including non-standard ones like Snorefox or mobile API endpoints.\n\n3. REAL-WORLD EXAMPLES: Provide 2-3 specific, documented examples of similar vulnerabilities being exploited in real-world scenarios. Include organization names, approximate dates, and outcomes when available. If possible, include examples that are relevant to the specific API structure identified.\n\nFormat your response with clear section headers and concise, technical explanations. Focus on factual information relevant to this specific vulnerability type and API structure. If the vulnerability is related to JWT issues, unrestricted account creation, or broken authentication, be particularly detailed about the exploitation techniques and preventative measures.\n\nResponse:"
+  },
+  "remediation_template": {
+    "name": "Vulnerability Remediation",
+    "description": "Template used to generate detailed remediation steps for vulnerabilities",
+    "template": "You are a cybersecurity expert specializing in API security. Your task is to provide detailed remediation steps for a vulnerability.\n\nVulnerability: {vulnerability}\nSeverity: {severity}\nEndpoint: {endpoint}\nDetails: {details}\nAPI Structure: {api_structure}\n\nBased on the information above, provide comprehensive, actionable remediation steps to fix this vulnerability.\nInclude:\n1. Root cause analysis\n2. Step-by-step technical instructions for fixing the issue, tailored to the specific API structure\n3. Code examples where applicable\n4. Best practices to prevent similar issues in the future\n5. References to relevant security standards or guidelines\n\nYour response should be technical, precise, and directly applicable to the vulnerability described.\n\nRemediation:"
+  },
+  "section_templates": {
+    "description": {
+      "name": "Section Enhancement - Description",
+      "description": "Template used to enhance the description section of a vulnerability",
+      "template": "Generate a detailed description for the vulnerability: {vulnerability_name}. This should explain what the vulnerability is, how it works, and why it's a security concern. The severity of this vulnerability is {severity}. The affected endpoint is: {endpoint}. Here is the evidence of the vulnerability: {evidence}."
+    },
+    "risk": {
+      "name": "Section Enhancement - Risk",
+      "description": "Template used to enhance the risk section of a vulnerability",
+      "template": "Generate a comprehensive risk assessment for the vulnerability: {vulnerability_name}. Explain the potential risks to the organization if this vulnerability is exploited. The severity of this vulnerability is {severity}. The affected endpoint is: {endpoint}. Here is the evidence of the vulnerability: {evidence}."
+    },
+    "impact": {
+      "name": "Section Enhancement - Impact",
+      "description": "Template used to enhance the impact section of a vulnerability",
+      "template": "Generate an impact analysis for the vulnerability: {vulnerability_name}. Describe the potential impact on the organization, users, and data if this vulnerability is exploited. The severity of this vulnerability is {severity}. The affected endpoint is: {endpoint}. Here is the evidence of the vulnerability: {evidence}."
+    },
+    "examples": {
+      "name": "Section Enhancement - Examples",
+      "description": "Template used to enhance the examples section of a vulnerability",
+      "template": "Provide real-world examples of how the vulnerability: {vulnerability_name} has been exploited in the past. Include notable security incidents, breaches, or attacks that utilized this type of vulnerability. The severity of this vulnerability is {severity}. The affected endpoint is: {endpoint}. Here is the evidence of the vulnerability: {evidence}."
+    },
+    "remediation": {
+      "name": "Section Enhancement - Remediation",
+      "description": "Template used to enhance the remediation section of a vulnerability",
+      "template": "Provide detailed remediation steps for the vulnerability: {vulnerability_name}. Include specific code examples, configuration changes, or best practices to fix this issue. The severity of this vulnerability is {severity}. The affected endpoint is: {endpoint}. Here is the evidence of the vulnerability: {evidence}."
+    }
+  }
+}
